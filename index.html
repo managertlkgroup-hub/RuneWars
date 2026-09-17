@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RUNE WARS - Stage 1 Prototype</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --grid-bg: #16213e;
+            --gem-red: #e94560;
+            --gem-blue: #0f3460;
+            --gem-green: #2ecc71;
+            --gem-yellow: #f1c40f;
+            --text-color: #ecf0f1;
+            --accent-color: #e94560;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* HUD */
+        #hud {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.7;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        #enemy-hp-bar {
+            width: 100%;
+            height: 10px;
+            background: #333;
+            border-radius: 5px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        #enemy-hp-fill {
+            height: 100%;
+            background: var(--gem-red);
+            width: 100%;
+            transition: width 0.3s ease;
+        }
+
+        /* GRID */
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            grid-template-rows: repeat(7, 1fr);
+            gap: 4px;
+            background-color: var(--grid-bg);
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 90vw;
+            height: 90vw;
+            max-width: 400px;
+            max-height: 400px;
+            position: relative;
+        }
+
+        .cell {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.1s;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .cell:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .cell.selected {
+            background-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            z-index: 10;
+        }
+
+        .gem {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            box-shadow: inset -2px -2px 6px rgba(0,0,0,0.3), inset 2px 2px 6px rgba(255,255,255,0.4);
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        .gem.red { background-color: var(--gem-red); }
+        .gem.blue { background-color: var(--gem-blue); }
+        .gem.green { background-color: var(--gem-green); }
+        .gem.yellow { background-color: var(--gem-yellow); }
+
+        .gem.matched {
+            transform: scale(0);
+            opacity: 0;
+        }
+
+        /* Floating Text */
+        .floating-text {
+            position: absolute;
+            font-weight: bold;
+            font-size: 20px;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            z-index: 100;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
+        }
+
+        /* Screen Shake */
+        .shake {
+            animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        /* Enemy Area */
+        #enemy-area {
+            margin-bottom: 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        #enemy-sprite {
+            font-size: 60px;
+            filter: drop-shadow(0 0 10px rgba(233, 69, 96, 0.5));
+            transition: transform 0.1s;
+            display: inline-block;
+        }
+
+        .enemy-hit {
+            animation: enemyHit 0.2s ease-in-out;
+        }
+
+        @keyframes enemyHit {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(0.9); filter: brightness(2) sepia(1) hue-rotate(-50deg) saturate(5); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        #message-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #message-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        #message-title {
+            font-size: 40px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            text-transform: uppercase;
+        }
+
+        #restart-btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        #restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        /* Cascade indicator */
+        #cascade-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-size: 40px;
+            font-weight: 900;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            pointer-events: none;
+            z-index: 200;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #cascade-indicator.show {
+            transform: translate(-50%, -50%) scale(1);
+        }
+        
+        #turn-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="enemy-area">
+        <div id="enemy-sprite">👹</div>
+        <div style="margin-top: 10px;">
+            <div class="stat-label">GOBLIN KING</div>
+            <div id="enemy-hp-bar"><div id="enemy-hp-fill"></div></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                <span id="hp-text">30 / 30</span>
+                <span id="atk-text">ATK: 3</span>
+            </div>
+        </div>
+        <div id="turn-indicator">TURN: <span id="turn-count">1</span></div>
+    </div>
+
+    <div id="grid">
+        <!-- Grid generated by JS -->
+    </div>
+
+    <div id="cascade-indicator">CASCADE x<span id="cascade-num">2</span>!</div>
+
+    <div id="message-overlay">
+        <div id="message-title">VICTORY!</div>
+        <button id="restart-btn">Next Battle</button>
+    </div>
+</div>
+
+<script>
+/**
+ * RUNE WARS - STAGE 1 PROTOTYPE
+ * Core Mechanics: Match-3 Combat Loop
+ */
+
+// --- CONFIGURATION ---
+const GRID_SIZE = 7;
+const GEM_TYPES = ['red', 'blue', 'green', 'yellow'];
+const ENEMY_START_HP = 30;
+const ENEMY_MAX_HP = 30;
+const ENEMY_ATTACK = 3;
+const PLAYER_START_HP = 20; // For future implementation
+
+// --- STATE ---
+let grid = [];
+let selectedCell = null;
+let isProcessing = false; // Block input during animations
+let enemyHP = ENEMY_START_HP;
+let turnCount = 1;
+let cascadeMultiplier = 1;
+
+// --- DOM ELEMENTS ---
+const gridEl = document.getElementById('grid');
+const enemyHpFillEl = document.getElementById('enemy-hp-fill');
+const hpTextEl = document.getElementById('hp-text');
+const enemySpriteEl = document.getElementById('enemy-sprite');
+const messageOverlayEl = document.getElementById('message-overlay');
+const messageTitleEl = document.getElementById('message-title');
+const restartBtnEl = document.getElementById('restart-btn');
+const cascadeIndicatorEl = document.getElementById('cascade-indicator');
+const cascadeNumEl = document.getElementById('cascade-num');
+const turnCountEl = document.getElementById('turn-count');
+const gameContainerEl = document.getElementById('game-container');
+
+// --- INITIALIZATION ---
+function initGame() {
+    enemyHP = ENEMY_START_HP;
+    turnCount = 1;
+    updateEnemyUI();
+    messageOverlayEl.classList.remove('active');
+    createGrid();
+    renderGrid();
+}
+
+function createGrid() {
+    grid = [];
+    for (let r = 0; r < GRID_SIZE; r++) {
+        const row = [];
+        for (let c = 0; c < GRID_SIZE; c++) {
+            let type;
+            // Prevent initial matches
+            do {
+                type = GEM_TYPES[Math.floor(Math.random() * GEM_TYPES.length)];
+            } while (
+                (c >= 2 && row[c-1].type === type && row[c-2].type === type) ||
+                (r >= 2 && grid[r-1][c].type === type && grid[r-2][c].type === type)
+            );
+            row.push({ type, el: null });
+        }
+        grid.push(row);
+    }
+}
+
+function renderGrid() {
+    gridEl.innerHTML = '';
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            cell.dataset.r = r;
+            cell.dataset.c = c;
+            cell.addEventListener('click', () => handleCellClick(r, c));
+
+            const gem = document.createElement('div');
+            gem.classList.add('gem', grid[r][c].type);
+            cell.appendChild(gem);
+            
+            gridEl.appendChild(cell);
+            grid[r][c].el = cell;
+        }
+    }
+}
+
+// --- INTERACTION ---
+function handleCellClick(r, c) {
+    if (isProcessing || enemyHP <= 0) return;
+
+    if (!selectedCell) {
+        // Select first
+        selectedCell = { r, c };
+        grid[r][c].el.classList.add('selected');
+    } else {
+        // Select second
+        const r1 = selectedCell.r;
+        const c1 = selectedCell.c;
+        grid[r1][c1].el.classList.remove('selected');
+        selectedCell = null;
+
+        // Check adjacency
+        if (Math.abs(r1 - r) + Math.abs(c1 - c) === 1) {
+            attemptSwap(r1, c1, r, c);
+        } else if (r1 === r && c1 === c) {
+            // Clicked same cell, do nothing (already deselected)
+        } else {
+            // Clicked far away, select new
+            selectedCell = { r, c };
+            grid[r][c].el.classList.add('selected');
+        }
+    }
+}
+
+async function attemptSwap(r1, c1, r2, c2) {
+    isProcessing = true;
+
+    // Visual Swap
+    swapGems(r1, c1, r2, c2);
+    await wait(200);
+
+    // Check Matches
+    const matches = findMatches();
+
+    if (matches.length > 0) {
+        // Valid move
+        await processMatches(matches);
+    } else {
+        // Invalid move, swap back
+        swapGems(r1, c1, r2, c2);
+        await wait(200);
+        isProcessing = false;
+    }
+}
+
+function swapGems(r1, c1, r2, c2) {
+    const temp = grid[r1][c1].type;
+    grid[r1][c1].type = grid[r2][c2].type;
+    grid[r2][c2].type = temp;
+    
+    // Re-render specific cells to update colors
+    updateCellVisual(r1, c1);
+    updateCellVisual(r2, c2);
+}
+
+function updateCellVisual(r, c) {
+    const cell = grid[r][c].el;
+    const gem = cell.querySelector('.gem');
+    gem.className = `gem ${grid[r][c].type}`;
+}
+
+// --- MATCH LOGIC ---
+function findMatches() {
+    const matchedSet = new Set();
+
+    // Horizontal
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE - 2; c++) {
+            const type = grid[r][c].type;
+            if (grid[r][c+1].type === type && grid[r][c+2].type === type) {
+                matchedSet.add(`${r},${c}`);
+                matchedSet.add(`${r},${c+1}`);
+                matchedSet.add(`${r},${c+2}`);
+                // Check further
+                let k = c + 3;
+                while (k < GRID_SIZE && grid[r][k].type === type) {
+                    matchedSet.add(`${r},${k}`);
+                    k++;
+                }
+            }
+        }
+    }
+
+    // Vertical
+    for (let c = 0; c < GRID_SIZE; c++) {
+        for (let r = 0; r < GRID_SIZE - 2; r++) {
+            const type = grid[r][c].type;
+            if (grid[r+1][c].type === type && grid[r+2][c].type === type) {
+                matchedSet.add(`${r},${c}`);
+                matchedSet.add(`${r+1},${c}`);
+                matchedSet.add(`${r+2},${c}`);
+                // Check further
+                let k = r + 3;
+                while (k < GRID_SIZE && grid[k][c].type === type) {
+                    matchedSet.add(`${k},${c}`);
+                    k++;
+                }
+            }
+        }
+    }
+
+    return Array.from(matchedSet).map(str => {
+        const [r, c] = str.split(',').map(Number);
+        return { r, c, type: grid[r][c].type };
+    });
+}
+
+async function processMatches(matches, cascadeLevel = 1) {
+    cascadeMultiplier = cascadeLevel;
+    
+    if (cascadeLevel > 1) {
+        cascadeNumEl.innerText = cascadeLevel;
+        cascadeIndicatorEl.classList.add('show');
+        setTimeout(() => cascadeIndicatorEl.classList.remove('show'), 1000);
+    }
+
+    // Calculate Stats
+    let damage = 0;
+    let shield = 0;
+    let heal = 0;
+    let rage = 0;
+
+    const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
+    matches.forEach(m => counts[m.type]++);
+
+    // Logic per Design Doc
+    // Red: Dmg (1 per gem * cascade)
+    // Blue: Shield (2 per gem)
+    // Green: Heal (2 per gem)
+    // Yellow: Rage (Not implemented in Stage 1 combat logic fully, but counted)
+    
+    damage += counts.red * cascadeLevel;
+    shield += counts.blue * 2; 
+    heal += counts.green * 2;
+    rage += counts.yellow * 10;
+
+    // Visual Removal
+    matches.forEach(m => {
+        const gem = grid[m.r][m.c].el.querySelector('.gem');
+        gem.classList.add('matched');
+    });
+
+    await wait(300);
+
+    // Apply Effects
+    if (damage > 0) {
+        dealDamage(damage);
+    }
+    if (shield > 0) {
+        showFloatingText(`+${shield} 🛡️`, 3, 3, '#3498db');
+    }
+    if (heal > 0) {
+        showFloatingText(`+${heal} ❤️`, 3, 5, '#2ecc71');
+    }
+
+    // Clear matched gems logically
+    matches.forEach(m => {
+        grid[m.r][m.c].type = null;
+        grid[m.r][m.c].el.querySelector('.gem').classList.remove('matched'); // Reset for reuse
+        grid[m.r][m.c].el.querySelector('.gem').style.opacity = '0';
+    });
+
+    await wait(200);
+
+    // Drop Gems
+    dropGems();
+    await wait(300);
+
+    // Refill Top
+    refillGrid();
+    await wait(200);
+
+    // Check for Cascades
+    const newMatches = findMatches();
+    if (newMatches.length > 0) {
+        await processMatches(newMatches, cascadeLevel + 1);
+    } else {
+        // End Turn
+        endTurn();
+    }
+}
+
+function dropGems() {
+    for (let c = 0; c < GRID_SIZE; c++) {
+        let emptyRow = GRID_SIZE - 1;
+        for (let r = GRID_SIZE - 1; r >= 0; r--) {
+            if (grid[r][c].type !== null) {
+                grid[emptyRow][c].type = grid[r][c].type;
+                updateCellVisual(emptyRow, c);
+                grid[emptyRow][c].el.querySelector('.gem').style.opacity = '1';
+                if (emptyRow !== r) {
+                    grid[r][c].type = null;
+                    grid[r][c].el.querySelector('.gem').style.opacity = '0';
+                }
+                emptyRow--;
+            }
+        }
+    }
+}
+
+function refillGrid() {
+    for (let c = 0; c < GRID_SIZE; c++) {
+        for (let r = 0; r < GRID_SIZE; r++) {
+            if (grid[r][c].type === null) {
+                grid[r][c].type = GEM_TYPES[Math.floor(Math.random() * GEM_TYPES.length)];
+                updateCellVisual(r, c);
+                grid[r][c].el.querySelector('.gem').style.opacity = '1';
+            }
+        }
+    }
+}
+
+// --- COMBAT SYSTEM ---
+function dealDamage(amount) {
+    enemyHP -= amount;
+    if (enemyHP < 0) enemyHP = 0;
+    
+    updateEnemyUI();
+    showFloatingText(`-${amount}`, 6, 2, '#fff', true);
+    
+    // Juice
+    enemySpriteEl.classList.remove('enemy-hit');
+    void enemySpriteEl.offsetWidth; // trigger reflow
+    enemySpriteEl.classList.add('enemy-hit');
+    
+    if (amount >= 5) {
+        gameContainerEl.classList.add('shake');
+        setTimeout(() => gameContainerEl.classList.remove('shake'), 300);
+    }
+
+    if (enemyHP <= 0) {
+        setTimeout(victory, 500);
+    }
+}
+
+function updateEnemyUI() {
+    const pct = (enemyHP / ENEMY_MAX_HP) * 100;
+    enemyHpFillEl.style.width = `${pct}%`;
+    hpTextEl.innerText = `${enemyHP} / ${ENEMY_MAX_HP}`;
+}
+
+function endTurn() {
+    if (enemyHP <= 0) return;
+
+    turnCount++;
+    turnCountEl.innerText = turnCount;
+    
+    // Enemy Attack Logic (Simple: Every 3 turns or random chance for prototype)
+    // Design doc says "Goblin attacks every 2 turns" roughly. 
+    // Let's make it simple: Enemy attacks after player turn if no match made? 
+    // No, design says "Goblin hits through 3 moves". 
+    // For prototype: Enemy attacks every 3rd player turn.
+    
+    if (turnCount % 3 === 0) {
+        setTimeout(enemyAttack, 500);
+    } else {
+        isProcessing = false;
+    }
+}
+
+function enemyAttack() {
+    showFloatingText(`-${ENEMY_ATTACK}`, 6, 8, '#e74c3c');
+    gameContainerEl.classList.add('shake');
+    setTimeout(() => gameContainerEl.classList.remove('shake'), 300);
+    
+    // In full game, this reduces player HP. For Stage 1, we just show feedback.
+    // Or we can make it a "Time Limit" feel. 
+    // Let's just flash screen red.
+    document.body.style.backgroundColor = '#502020';
+    setTimeout(() => document.body.style.backgroundColor = 'var(--bg-color)', 200);
+
+    isProcessing = false;
+}
+
+function victory() {
+    messageTitleEl.innerText = "VICTORY!";
+    messageTitleEl.style.color = "#f1c40f";
+    messageOverlayEl.classList.add('active');
+}
+
+function showFloatingText(text, r, c, color, isCrit = false) {
+    const cell = grid[r] && grid[r][c] ? grid[r][c].el : grid[3][3].el;
+    const rect = cell.getBoundingClientRect();
+    const containerRect = gameContainerEl.getBoundingClientRect();
+    
+    const el = document.createElement('div');
+    el.classList.add('floating-text');
+    el.innerText = text;
+    el.style.color = color;
+    el.style.left = (rect.left - containerRect.left + rect.width/2 - 10) + 'px';
+    el.style.top = (rect.top - containerRect.top) + 'px';
+    
+    if (isCrit) {
+        el.style.fontSize = '30px';
+        el.style.fontWeight = '900';
+    }
+
+    gameContainerEl.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+}
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+restartBtnEl.addEventListener('click', initGame);
+
+// Start
+initGame();
+
+</script>
+</body>
+</html>
