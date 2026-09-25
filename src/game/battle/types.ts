@@ -36,6 +36,7 @@ export interface Gem {
 export type BoardPhase =
   | "idle"
   | "swapping"
+  | "swapBack"
   | "checking"
   | "removing"
   | "falling"

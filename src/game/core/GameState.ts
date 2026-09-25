@@ -2,14 +2,16 @@
 
 import { create } from "zustand";
 import type { RuneId, RuneRarity } from "../content/runes";
+import type { DungeonMap, NodeType } from "../map/MapGenerator";
 
 export type ScreenName =
   | "loading"
   | "menu"
+  | "map"
   | "battle"
   | "reward"
   | "equip"
-  | "map"
+  | "nodeAction"
   | "victory"
   | "defeat"
   | "camp";
@@ -30,6 +32,14 @@ export interface MatchSummary {
   cascadeLevel: number;
 }
 
+export interface PendingBattle {
+  floor: number;
+  isBoss: boolean;
+  nodeType: NodeType;
+  nodeId: number;
+  dungeonId: number;
+}
+
 interface GameUIState {
   screen: ScreenName;
   score: number;
@@ -42,9 +52,15 @@ interface GameUIState {
 
   // мета-прогрессия
   gold: number; // золото аккаунта
-  ownedRunes: OwnedRune[]; // инвентарь рун
-  equippedRunes: RuneId[]; // до 3 экипированных
-  lastRewardRunes: RuneId[]; // руны, доступные для выбора в награде
+  ownedRunes: OwnedRune[];
+  equippedRunes: RuneId[];
+  lastRewardRunes: RuneId[];
+
+  // карта подземелья
+  currentMap: DungeonMap | null;
+  currentDungeonId: number;
+  pendingBattle: PendingBattle | null;
+  lastNodeReward: { kind: string; amount?: number; label?: string } | null;
 
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
@@ -60,6 +76,11 @@ interface GameUIState {
   upgradeRune: (id: RuneId) => void;
   setEquippedRunes: (ids: RuneId[]) => void;
   setLastRewardRunes: (ids: RuneId[]) => void;
+
+  setMap: (m: DungeonMap) => void;
+  setDungeonId: (id: number) => void;
+  setPendingBattle: (p: PendingBattle | null) => void;
+  setLastNodeReward: (r: GameUIState["lastNodeReward"]) => void;
 
   resetRun: () => void;
   resetAll: () => void;
@@ -79,6 +100,10 @@ export const useGameStore = create<GameUIState>((set) => ({
   ownedRunes: [],
   equippedRunes: [],
   lastRewardRunes: [],
+  currentMap: null,
+  currentDungeonId: 1,
+  pendingBattle: null,
+  lastNodeReward: null,
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),
@@ -109,6 +134,11 @@ export const useGameStore = create<GameUIState>((set) => ({
   setEquippedRunes: (equippedRunes) => set({ equippedRunes: equippedRunes.slice(0, 3) }),
   setLastRewardRunes: (lastRewardRunes) => set({ lastRewardRunes }),
 
+  setMap: (currentMap) => set({ currentMap }),
+  setDungeonId: (currentDungeonId) => set({ currentDungeonId }),
+  setPendingBattle: (pendingBattle) => set({ pendingBattle }),
+  setLastNodeReward: (lastNodeReward) => set({ lastNodeReward }),
+
   resetRun: () =>
     set({
       score: 0,
@@ -128,5 +158,8 @@ export const useGameStore = create<GameUIState>((set) => ({
       ownedRunes: [],
       equippedRunes: [],
       lastRewardRunes: [],
+      currentMap: null,
+      pendingBattle: null,
+      lastNodeReward: null,
     }),
 }));

@@ -152,3 +152,54 @@ Unresolved / Next:
 - Этап 9-10: Полировка, публикация.
 - Рекомендация: следующий webDevReview — Этап 4 (Карта с ветвлением), который свяжет бои в роглайк-петлю.
 - Риск: руны Лёд/Кузнец/Хаос требуют редких условий (синий 4+, красный 5+, 5-й ход) — на случайных ходах срабатывают редко, но механики реализованы и работают (Fire/Life/Wrath/Vampire срабатывают часто).
+
+---
+Task ID: stage-4
+Agent: webDevReview (cron)
+Task: RUNE WARS — критический багфикс отката обмена + Этап 4: Карта с ветвлением
+
+Work Log:
+КРИТИЧЕСКИЙ БАГФИКС (зависание при невалидном обмене):
+- Найдено ДВА бага в BoardEngine.rollbackSwap + фазовой машине:
+  1. rollbackSwap присваивал a.targetPx = bx (b's home = a's текущая позиция) вместо ax (a's home) → кристаллы НЕ двигались назад. grid-присваивания и row/col тоже перепутаны a↔b.
+  2. После отката phase возвращалась в "swapping" → бесконечный цикл: повторная проверка матчей → повторный откат → зависание.
+- Фикс: полностью переписан rollbackSwap — правильное определение "домов" a/b (aHome = b.row/col, bHome = a.row/col), корректные targetPx/grid/row/col назначения. Добавлена новая фаза "swapBack" в BoardPhase (types.ts).
+- В update() добавлен case "swapBack": тикает phaseTimer, при >= ANIM.swap → snapGemsToTarget, снятие state "swapping"→"idle", swapPair=null, phase="idle".
+- Верификация: невалидный обмен (0,0)↔(0,1) — кристаллы [2,0]→[2,0] (вернулись), phase: swapping→swapBack→idle. 5 невалидных обменов подряд → все idle (нет залипания). После 5 откатов валидный обмен → phase=falling, score=172.5, maxCombo=3. Счётчики Очки/Каскад/Макс./Матчей обновляются корректно.
+
+ЭТАП 4: КАРТА С ВЕТВЛЕНИЕМ
+- Создан src/game/map/MapGenerator.ts: процедурная генерация графа. 5 этажей: floor 0 = старт (золотая звезда, внизу по центру, x=0.5, y=0.95), floors 1-4 = 2-4 узла (этаж 1 = 2 гарантированно), floor 5 = босс (корона, вверху, y=0.05). Типы узлов по этажам: floor 1 = battle/chest, floor 2 = +event/shop, floor 3 = +elite/camp, floor 4 = +elite/chest. floorScale() с множителями 1.0/1.0→1.1/1.05→1.25/1.15→1.4/1.25 (босс 100/10). Связи: max 2 от узла, |Δx|≤0.35, гарантия достижимости (если нет connectsFrom — привязка к ближайшему). refreshStatuses() — current/available/completed/locked. moveToNode() — переход. makeNodeData() — золото сундуков (3 тира), товары магазина, варианты событий.
+- Создан src/components/icons/MapIcons.tsx: 8 hand-written SVG-иконок узлов (старт-звезда, бой-меч+щит, элита-череп+корона, сундук, магазин-мешок+монеты, лагерь-палатка+костёр, событие-кристалл+?, босс-корона+рубин). Градиенты, drop-shadow, контур #1a0a1e.
+- Создан src/components/screens/MapScreen.tsx: рендер карты (SVG для фона + соединений + узлов-кнопок). Соединения: сплошные для пройденных путей (#c9a227), пунктирные для locked (#3a2a5a). Узлы: current — золотой пульсирующий круг (animation rune-pulse), available — серебряная рамка + цветной glow, completed — зелёная рамка + галочка, locked — пунктирная рамка + opacity 0.45. handleNodeClick: проверка статуса (completed → toast «Уже пройдено», locked → toast «Недоступно»), moveToNode, обработка типа (battle/elite/boss → pendingBattle+screen battle; chest → addGold+toast; camp → 15% засада или +30% HP; shop/event → toast). Кнопка «Новая карта» (регенерация). Кнопка «Руны» → screen equip.
+- Обновлён src/game/core/GameState.ts: +currentMap (DungeonMap), +currentDungeonId, +pendingBattle (PendingBattle), +lastNodeReward. Экшены setMap/setDungeonId/setPendingBattle/setLastNodeReward. resetAll сбрасывает карту.
+- Обновлён src/app/page.tsx: маршрутизация экранов (loading → map; screen map → MapScreen; battle → BattleScreen; equip → EquipScreen). Game Ready индикатор 90с.
+- Обновлён src/components/screens/BattleScreen.tsx: makeBattle(metrics, equippedRunes, pendingBattle) — использует floor/isBoss/dungeonId из pendingBattle для pickEnemyForFloor. Victory overlay: босс → «ПОДЗЕМЬЕ ПРОЙДЕНО» (с сообщением про новое подземелье), обычный → «ПОБЕДА». handlePickReward: применяет награду → если босс → advance dungeon (nextId 1-5) + generateDungeonMap → setScreen("map"). handleQuickRestart (поражение) → setScreen("map"). onSkip reward → map.
+- Багфикс ориентации карты: изначально формула top=(1-n.y) инвертировала старт/босса (старт вверху, босс внизу). Исправлено на top=n.y → старт внизу (y=0.95→91%), босс вверху (y=0.05→9%).
+
+Верификация через agent-browser:
+- Карта после старта: СТАРТ (золотая звезда) ВНИЗУ по центру, БОСС (корона) ВВЕРХУ по центру. Ровно 2 доступных узла на этаже 1 (серебряная рамка), остальные залочены (пунктир, opacity 0.45). VLM подтвердил все пункты.
+- Клик на доступный узел БОЙ → battle: phase=fighting, enemyName=Гоблин-воин, enemyHp=30 (floor 1), floor=1, isBoss=false.
+- Автобой → победа → «Забрать награду» → экран награды (3 карточки: Гнев редкая, Страж обычная, Лечение) → выбор Гнева → screen=map, ownedRunes=["wrath"], currentNodeType=battle.
+- Статусы узлов после победы: start=completed (галочка), battle=current (золотой пульс), floor-2 battle+chest=available (серебро), остальные=locked. VLM подтвердил: старт с зелёной галочкой, текущий золотой пульс, 2 доступных, остальные пунктирные.
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+
+Stage Summary:
+- КРИТИЧЕСКИЙ БАГ зависания отката ИСПРАВЛЕН (фаза swapBack + корректный rollbackSwap). 5 невалидных обменов подряд → все idle, валидный после → матч работает.
+- Этап 4 (Карта с ветвлением) ПОЛНОСТЬЮ ЗАВЕРШЁН и верифицирован: процедурный граф (5 этажей), 8 типов узлов с hand-written SVG-иконками, статусы (current/available/completed/locked), навигация, toast на пройденные, full loop карта→бой→награда→карта, босс→новое подземелье.
+- Архитектура: MapGenerator (граф) + MapIcons (SVG) + MapScreen (React+SVG рендер) + GameState (map/pendingBattle) + page.tsx маршрутизация + BattleScreen (pendingBattle).
+- Артефакты: скриншоты /home/z/my-project/screenshots/ (stage4-map-fixed.png, stage4-battle.png, stage4-map-after.png, bugfix-counters.png).
+
+Current Project Status:
+- Этапы 1-4 завершены и стабильны. Полный цикл: загрузка → карта → бой (с рунами) → победа → награда → карта → следующий узел → ... → босс → новое подземелье.
+- Критический баг отката исправлен — движок больше не зависает.
+- Статический экспорт работает (out/ = 1.4 MB, file:// OK).
+- lint чистый, 0 ошибок, FPS 60.
+
+Unresolved / Next:
+- Этап 5: Лут и инвентарь (4 типа сундуков, редкости 60/25/10/4/1%, pity timer 20, экипировка оружие/броня/амулет).
+- Этап 6: Магазин и Лагерь (полная реализация — сейчас stub'ы с toast).
+- Этап 7: Прокачка и герои (уровни 1-30, перки, престиж, открытие героев за золото).
+- Этап 8: Яндекс SDK.
+- Этап 9-10: Полировка, публикация.
+- Рекомендация: следующий webDevReview — Этап 5 (Лут и инвентарь) или доработка точек карты (магазин/лагерь/событие — сейчас базовые stub'ы).
+- Риск: shop/camp/event узлы сейчас дают только toast/toast (camp с 15% засадой). Полная реализация в Этапе 6.

@@ -12,6 +12,7 @@ import { RunePanel, PanelTitle } from "@/components/ui/RunePanel";
 import { RuneButton } from "@/components/ui/RuneButton";
 import { RuneIcon } from "@/components/icons/RuneIcons";
 import RewardScreen, { generateRewards, type RewardOption } from "@/components/screens/RewardScreen";
+import { generateDungeonMap } from "@/game/map/MapGenerator";
 import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
@@ -22,6 +23,7 @@ import { HEROES, getHero } from "@/game/content/heroes";
 import { pickEnemyForFloor } from "@/game/content/enemies";
 import { RUNES, getRune, type RuneDef, type RuneId } from "@/game/content/runes";
 import type { RuneState } from "@/game/battle/Rune";
+import type { PendingBattle } from "@/game/core/GameState";
 
 const CW = 1152;
 const CH = 648;
@@ -37,13 +39,23 @@ function computeMetrics() {
 
 function makeBattle(
   metrics: ReturnType<typeof computeMetrics>,
-  equippedRunes: RuneId[]
+  equippedRunes: RuneId[],
+  pending: PendingBattle | null
 ): BattleEngine {
   const heroDef = getHero("warrior");
-  const floors = [1, 1, 2, 2, 3];
-  const floor = floors[Math.floor(Math.random() * floors.length)];
-  const isBoss = Math.random() < 0.25;
-  const enemyDef = pickEnemyForFloor(1, floor, isBoss);
+  let floor = 1;
+  let isBoss = false;
+  let dungeonId = 1;
+  if (pending) {
+    floor = pending.floor;
+    isBoss = pending.isBoss;
+    dungeonId = pending.dungeonId;
+  } else {
+    const floors = [1, 1, 2, 2, 3];
+    floor = floors[Math.floor(Math.random() * floors.length)];
+    isBoss = Math.random() < 0.25;
+  }
+  const enemyDef = pickEnemyForFloor(dungeonId, floor, isBoss);
   const runeDefs = equippedRunes.map((id) => getRune(id));
   const b = new BattleEngine(heroDef, enemyDef, 1, runeDefs, metrics);
   b.start();
@@ -56,7 +68,8 @@ export default function BattleScreen() {
   const metrics = useMemo(() => computeMetrics(), []);
   const [particles] = useState(() => new ParticlePool());
   const equippedRunes = useGameStore((s) => s.equippedRunes);
-  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics, []));
+  const pendingBattle = useGameStore((s) => s.pendingBattle);
+  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics, [], pendingBattle));
   const [snap, setSnap] = useState<BattleState | null>(() => battle.snapshot());
   const [phase, setPhase] = useState<Phase>("fighting");
   const [rewards, setRewards] = useState<RewardOption[]>([]);
@@ -281,15 +294,15 @@ export default function BattleScreen() {
     if (clicked) getAudio().play("click");
   };
 
-  // Перезапуск боя с экипированными рунами
+  // Перезапуск боя с pendingBattle (из карты) или fallback
   const startNewBattle = useCallback(() => {
     particles.clear();
     charRendererRef.current?.clear();
     boardRendererRef.current = null;
     charRendererRef.current = null;
-    const eqIds = useGameStore.getState().equippedRunes;
-    const b = makeBattle(metrics, eqIds);
-    useGameStore.getState().resetRun();
+    const st = useGameStore.getState();
+    const b = makeBattle(metrics, st.equippedRunes, st.pendingBattle);
+    st.resetRun();
     setSnap(b.snapshot());
     setBattle(b);
     setPhaseSafe("fighting");
@@ -303,28 +316,37 @@ export default function BattleScreen() {
     setPhaseSafe("reward");
   };
 
-  // Выбор награды
+  // Выбор награды → возврат на карту (босс → новое подземелье)
   const handlePickReward = (opt: RewardOption) => {
     if (opt.kind === "rune" && opt.runeId && opt.rarity) {
       addOwnedRune({ id: opt.runeId, level: 1, rarity: opt.rarity });
     } else if (opt.kind === "gold" && opt.amount) {
       addGold(opt.amount);
     } else if (opt.kind === "heal") {
-      // переносимое лечение — добавим как временное (упрощённо: +gold для лагеря)
       addGold(Math.floor(opt.amount / 2));
     } else if (opt.kind === "upgrade") {
-      // улучшаем первую апгрейдабельную руну
       const owned = useGameStore.getState().ownedRunes;
       const upgradable = owned.find((r) => r.level < 3);
       if (upgradable) upgradeRune(upgradable.id);
     }
-    setPhaseSafe("equip");
+    // возврат на карту
+    const st = useGameStore.getState();
+    if (st.pendingBattle?.isBoss) {
+      // новое подземелье
+      const nextId = Math.min((st.pendingBattle.dungeonId || 1) + 1, 5);
+      st.setDungeonId(nextId);
+      st.setMap(generateDungeonMap(nextId));
+    }
+    st.setPendingBattle(null);
+    st.setScreen("map");
   };
 
-  // Кнопка "Новый бой" из non-victory (сброс)
+  // Поражение / сброс → возврат на карту
   const handleQuickRestart = () => {
-    useGameStore.getState().resetRun();
-    startNewBattle();
+    const st = useGameStore.getState();
+    st.setPendingBattle(null);
+    st.resetRun();
+    st.setScreen("map");
   };
 
   const equippedDefs: RuneDef[] = equippedRunes.map((id) => getRune(id));
@@ -425,9 +447,9 @@ export default function BattleScreen() {
 
             {phase === "victory" && (
               <Overlay
-                title="ПОБЕДА"
+                title={pendingBattle?.isBoss ? "ПОДЗЕМЬЕ ПРОЙДЕНО" : "ПОБЕДА"}
                 titleColor="text-rune-gold text-glow-gold"
-                subtitle={snap ? `Враг повержен за ${snap.turn} ходов` : ""}
+                subtitle={pendingBattle?.isBoss ? "Босс повержен! Откроется следующее подземелье." : snap ? `Враг повержен за ${snap.turn} ходов` : ""}
                 score={score}
                 onAction={handleClaimReward}
                 actionLabel="Забрать награду"
@@ -440,17 +462,21 @@ export default function BattleScreen() {
                 subtitle="Герой пал в бою"
                 score={score}
                 onAction={handleQuickRestart}
-                actionLabel="Попробовать снова"
+                actionLabel="Вернуться на карту"
               />
             )}
             {phase === "reward" && (
               <RewardScreen
                 rewards={rewards}
                 onPick={handlePickReward}
-                onSkip={() => setPhaseSafe("equip")}
+                onSkip={() => {
+                  const st = useGameStore.getState();
+                  st.setPendingBattle(null);
+                  st.setScreen("map");
+                }}
               />
             )}
-            {phase === "equip" && <EquipScreen onStart={startNewBattle} />}
+            {phase === "equip" && null}
           </div>
 
           {/* Правая панель — статистика */}

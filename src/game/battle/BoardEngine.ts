@@ -266,11 +266,10 @@ export class BoardEngine {
             const grid = this.colorGrid();
             const matches = findAllMatches(grid);
             if (matches.length === 0) {
-              // откат обмена
+              // откат обмена: цели домой + переход в swapBack-анимацию
               const { a, b } = this.swapPair;
               this.rollbackSwap(a, b);
-              this.swapPair!.rollback = true;
-              this.phase = "swapping";
+              this.phase = "swapBack";
               this.phaseTimer = 0;
               this.emit({
                 type: "swapFail",
@@ -286,6 +285,27 @@ export class BoardEngine {
           } else {
             this.phase = "idle";
           }
+        }
+        break;
+      case "swapBack":
+        // анимация возврата кристаллов домой (0.2с)
+        this.phaseTimer += dt;
+        if (this.phaseTimer >= ANIM.swap) {
+          this.phaseTimer = 0;
+          this.snapGemsToTarget();
+          // снимаем состояние swapping
+          for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+              const g = this.grid[r][c];
+              if (g && g.state === "swapping") {
+                g.state = "idle";
+                g.scale = 1;
+                g.targetScale = 1;
+              }
+            }
+          }
+          this.swapPair = null;
+          this.phase = "idle";
         }
         break;
       case "checking":
@@ -432,23 +452,25 @@ export class BoardEngine {
   }
 
   private rollbackSwap(a: Gem, b: Gem) {
-    // возвращаем на исходные позиции
-    const r1 = b.row;
-    const c1 = b.col;
-    const r2 = a.row;
-    const c2 = a.col;
-    const { x: ax, y: ay } = this.cellCenter(r1, c1);
-    const { x: bx, y: by } = this.cellCenter(r2, c2);
-    a.targetPx = bx;
-    a.targetPy = by;
-    b.targetPx = ax;
-    b.targetPy = ay;
-    this.grid[r1][c1] = b;
-    this.grid[r2][c2] = a;
-    a.row = r2;
-    a.col = c2;
-    b.row = r1;
-    b.col = c1;
+    // a's home = где b сейчас (логически); b's home = где a сейчас
+    const aHomeR = b.row;
+    const aHomeC = b.col;
+    const bHomeR = a.row;
+    const bHomeC = a.col;
+    const { x: aHomeX, y: aHomeY } = this.cellCenter(aHomeR, aHomeC);
+    const { x: bHomeX, y: bHomeY } = this.cellCenter(bHomeR, bHomeC);
+    // визуальные цели — домой
+    a.targetPx = aHomeX;
+    a.targetPy = aHomeY;
+    b.targetPx = bHomeX;
+    b.targetPy = bHomeY;
+    // логические позиции — домой
+    this.grid[aHomeR][aHomeC] = a;
+    this.grid[bHomeR][bHomeC] = b;
+    a.row = aHomeR;
+    a.col = aHomeC;
+    b.row = bHomeR;
+    b.col = bHomeC;
     a.state = "swapping";
     b.state = "swapping";
   }
