@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import BattleScreen from "@/components/screens/BattleScreen";
 import MapScreen from "@/components/screens/MapScreen";
 import EquipScreen from "@/components/screens/EquipScreen";
+import InventoryScreen from "@/components/screens/InventoryScreen";
 import { useGameStore } from "@/game/core/GameState";
 
 export default function Home() {
@@ -56,6 +57,11 @@ export default function Home() {
       {screen === "equip" && (
         <div className="w-full h-full relative">
           <EquipScreen onStart={() => setScreen("map")} />
+        </div>
+      )}
+      {screen === "inventory" && (
+        <div className="w-full h-full relative">
+          <InventoryScreen onClose={() => setScreen("map")} />
         </div>
       )}
       {(screen === "reward" || screen === "victory" || screen === "defeat" || screen === "nodeAction") && (

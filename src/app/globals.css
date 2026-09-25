@@ -202,3 +202,18 @@ canvas {
   display: block;
   touch-action: none;
 }
+
+/* Сундук: тряска и вылет предметов */
+@keyframes chest-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px) rotate(-2deg); }
+  75% { transform: translateX(3px) rotate(2deg); }
+}
+.chest-shake { animation: chest-shake 0.15s ease-in-out infinite; }
+
+@keyframes item-pop {
+  0% { transform: translateY(-40px) scale(0.3); opacity: 0; }
+  60% { transform: translateY(8px) scale(1.1); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.item-pop { animation: item-pop 0.5s ease-out backwards; }

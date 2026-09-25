@@ -1,9 +1,10 @@
-// RUNE WARS — герой (HP/щит/ярость/уровень/руны)
+// RUNE WARS — герой (HP/щит/ярость/уровень/руны/предметы)
 
 import type { HeroDef } from "../content/heroes";
 import type { RuneDef } from "../content/runes";
 import { RuneState } from "./Rune";
 import { CAPS } from "../content/balance";
+import type { Item, ItemBonus } from "../content/items";
 
 export interface FloatNumber {
   value: number;
@@ -26,13 +27,20 @@ export class Hero {
   rageStrikeCooldown: number;
   // экипированные руны (до 3)
   runes: RuneState[] = [];
+  // экипированные предметы
+  equippedItems: { weapon: Item | null; armor: Item | null; amulet: Item | null } = {
+    weapon: null,
+    armor: null,
+    amulet: null,
+  };
+  // счётчик для легендарного оружия (fury_strike: каждый 3-й красный +50%)
+  private redMatchCount: number = 0;
   // сохранённый щит от Стража (для перехода между боями)
   carriedShield: number = 0;
 
   constructor(def: HeroDef, level = 1) {
     this.def = def;
     this.level = level;
-    // +5 HP за уровень выше 1
     this.maxHp = def.baseHp + (level - 1) * 5;
     this.hp = this.maxHp;
     this.shield = 0;
@@ -43,6 +51,45 @@ export class Hero {
   /** Экипировать руны (до 3). */
   equipRunes(defs: RuneDef[]): void {
     this.runes = defs.map((d) => new RuneState(d, 1));
+  }
+
+  /** Экипировать предметы — применяет бонусы к статам. */
+  equipItems(items: { weapon?: Item | null; armor?: Item | null; amulet?: Item | null }): void {
+    this.equippedItems.weapon = items.weapon ?? null;
+    this.equippedItems.armor = items.armor ?? null;
+    this.equippedItems.amulet = items.amulet ?? null;
+    // пересчитать maxHp с бонусом брони
+    const baseMax = this.def.baseHp + (this.level - 1) * 5;
+    const armorBonus = this.equippedItems.armor?.bonus.maxHpBonus ?? 0;
+    const prevMax = this.maxHp;
+    this.maxHp = baseMax + armorBonus;
+    // сохранить пропорцию HP
+    if (prevMax > 0) {
+      const ratio = this.hp / prevMax;
+      this.hp = Math.min(this.maxHp, Math.round(this.maxHp * ratio));
+    }
+  }
+
+  /** Сумма всех бонусов предметов. */
+  get itemBonuses(): ItemBonus {
+    const b: ItemBonus = {};
+    let dmg = 0;
+    let shield = 0;
+    let rage = 0;
+    let heal = 0;
+    for (const slot of [this.equippedItems.weapon, this.equippedItems.armor, this.equippedItems.amulet]) {
+      if (!slot) continue;
+      dmg += slot.bonus.damageBonus ?? 0;
+      shield += slot.bonus.shieldBonus ?? 0;
+      rage += slot.bonus.ragePerTurn ?? 0;
+      heal += slot.bonus.healPerTurn ?? 0;
+      if (slot.bonus.legendaryEffect) b.legendaryEffect = slot.bonus.legendaryEffect;
+    }
+    if (dmg) b.damageBonus = dmg;
+    if (shield) b.shieldBonus = shield;
+    if (rage) b.ragePerTurn = rage;
+    if (heal) b.healPerTurn = heal;
+    return b;
   }
 
   /** Найти руну по id. */
@@ -57,6 +104,18 @@ export class Hero {
     return CAPS.rageMax;
   }
 
+  /** Множитель урона красных матчей с учётом оружия (и легендарного эффекта fury_strike). */
+  redDamageMultiplier(): number {
+    const b = this.itemBonuses;
+    let mult = 1 + (b.damageBonus ?? 0);
+    // легендарный меч fury_strike: каждый 3-й красный матч +50%
+    if (b.legendaryEffect === "fury_strike") {
+      this.redMatchCount++;
+      if (this.redMatchCount % 3 === 0) mult *= 1.5;
+    }
+    return mult;
+  }
+
   /** Добавить щит (с лимитом 50). */
   addShield(amount: number): number {
     const before = this.shield;
@@ -64,7 +123,7 @@ export class Hero {
     return this.shield - before;
   }
 
-  /** Лечение (с лимитом maxHp). Возвращает реально добавленное. */
+  /** Лечение (с лимитом maxHp). */
   heal(amount: number): number {
     const before = this.hp;
     this.hp = Math.min(this.maxHp, this.hp + amount);
@@ -78,18 +137,16 @@ export class Hero {
     return this.rage - before;
   }
 
-  /** Готов ли ярость-удар. Wrath-руна делает ульту ×3 вместо ×2. */
+  /** Готов ли ярость-удар. Wrath-руна делает ульту ×3. */
   canRageStrike(): boolean {
     return this.rage >= 30 && this.rageStrikeCooldown <= 0;
   }
 
-  /** Множитель ярость-удара: ×2 базово, ×3 с руной Гнева. */
   rageStrikeMultiplier(): number {
     const wrath = this.getRune("wrath");
     return wrath ? 3 : 2;
   }
 
-  /** Совершить ярость-удар: сбросить ярость до 0 и поставить кулдаун 3 хода. */
   consumeRageStrike(): void {
     this.rage = 0;
     this.rageStrikeCooldown = CAPS.rageStrikeCooldownTurns;
@@ -113,13 +170,13 @@ export class Hero {
     return this.hp <= 0;
   }
 
-  /** Тик пер-ходовых кулдаунов (вызывается в конце хода): руны + ярость. */
+  /** Тик пер-ходовых кулдаунов: руны + ярость. */
   tickCooldowns(): void {
     if (this.rageStrikeCooldown > 0) this.rageStrikeCooldown--;
     for (const r of this.runes) r.tick();
   }
 
-  /** Реген от руны Жизнь (вызывается в начале хода). Возвращает HP. */
+  /** Реген от руны Жизнь. */
   applyLifeRegen(): number {
     const life = this.getRune("life");
     if (!life || life.lifeRegenStacks <= 0) return 0;
@@ -130,11 +187,16 @@ export class Hero {
     return 0;
   }
 
-  /** Сохранить щит для перехода между боями (руна Страж). Вызывается при победе. */
+  /** Сохранить щит для перехода между боями (руна Страж + легендарная броня iron_skin). */
   preserveShieldOnVictory(): void {
     const guardian = this.getRune("guardian");
-    if (guardian) {
-      this.carriedShield = Math.floor(this.shield * guardian.effectivePower);
+    let factor = guardian ? guardian.effectivePower : 0;
+    // легендарная броня iron_skin: +15% к сохранению
+    if (this.equippedItems.armor?.bonus.legendaryEffect === "iron_skin") {
+      factor = Math.max(factor, 0.5) + 0.15;
+    }
+    if (factor > 0) {
+      this.carriedShield = Math.floor(this.shield * factor);
     }
   }
 

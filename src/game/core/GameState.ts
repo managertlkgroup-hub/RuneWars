@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { RuneId, RuneRarity } from "../content/runes";
 import type { DungeonMap, NodeType } from "../map/MapGenerator";
+import type { Item, ItemCategory, ChestType } from "../content/items";
 
 export type ScreenName =
   | "loading"
@@ -11,6 +12,7 @@ export type ScreenName =
   | "battle"
   | "reward"
   | "equip"
+  | "inventory"
   | "nodeAction"
   | "victory"
   | "defeat"
@@ -62,6 +64,13 @@ interface GameUIState {
   pendingBattle: PendingBattle | null;
   lastNodeReward: { kind: string; amount?: number; label?: string } | null;
 
+  // инвентарь и экипировка
+  inventory: Item[];
+  equippedItems: { weapon: Item | null; armor: Item | null; amulet: Item | null };
+  pityCounter: number;
+  pendingChest: { chestType: ChestType; nodeId: number } | null;
+  pendingDrop: Item | null; // дроп с элиты/босса
+
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
   setCombo: (n: number) => void;
@@ -81,6 +90,13 @@ interface GameUIState {
   setDungeonId: (id: number) => void;
   setPendingBattle: (p: PendingBattle | null) => void;
   setLastNodeReward: (r: GameUIState["lastNodeReward"]) => void;
+
+  addItem: (it: Item) => void;
+  equipItem: (it: Item) => void;
+  unequipSlot: (cat: ItemCategory) => void;
+  setPityCounter: (n: number) => void;
+  setPendingChest: (c: GameUIState["pendingChest"]) => void;
+  setPendingDrop: (d: Item | null) => void;
 
   resetRun: () => void;
   resetAll: () => void;
@@ -104,6 +120,11 @@ export const useGameStore = create<GameUIState>((set) => ({
   currentDungeonId: 1,
   pendingBattle: null,
   lastNodeReward: null,
+  inventory: [],
+  equippedItems: { weapon: null, armor: null, amulet: null },
+  pityCounter: 0,
+  pendingChest: null,
+  pendingDrop: null,
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),
@@ -139,6 +160,33 @@ export const useGameStore = create<GameUIState>((set) => ({
   setPendingBattle: (pendingBattle) => set({ pendingBattle }),
   setLastNodeReward: (lastNodeReward) => set({ lastNodeReward }),
 
+  addItem: (it) => set((s) => ({ inventory: [...s.inventory, it] })),
+  equipItem: (it) =>
+    set((s) => {
+      const eq = { ...s.equippedItems };
+      // вернуть текущий экипированный в инвентарь
+      const cur = eq[it.category];
+      const inv = [...s.inventory];
+      if (cur) inv.push(cur);
+      // убрать новый из инвентаря
+      const idx = inv.findIndex((x) => x.uid === it.uid);
+      if (idx >= 0) inv.splice(idx, 1);
+      eq[it.category] = it;
+      return { equippedItems: eq, inventory: inv };
+    }),
+  unequipSlot: (cat) =>
+    set((s) => {
+      const eq = { ...s.equippedItems };
+      const cur = eq[cat];
+      const inv = [...s.inventory];
+      if (cur) inv.push(cur);
+      eq[cat] = null;
+      return { equippedItems: eq, inventory: inv };
+    }),
+  setPityCounter: (pityCounter) => set({ pityCounter }),
+  setPendingChest: (pendingChest) => set({ pendingChest }),
+  setPendingDrop: (pendingDrop) => set({ pendingDrop }),
+
   resetRun: () =>
     set({
       score: 0,
@@ -161,5 +209,10 @@ export const useGameStore = create<GameUIState>((set) => ({
       currentMap: null,
       pendingBattle: null,
       lastNodeReward: null,
+      inventory: [],
+      equippedItems: { weapon: null, armor: null, amulet: null },
+      pityCounter: 0,
+      pendingChest: null,
+      pendingDrop: null,
     }),
 }));

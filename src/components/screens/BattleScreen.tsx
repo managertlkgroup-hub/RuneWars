@@ -13,6 +13,7 @@ import { RuneButton } from "@/components/ui/RuneButton";
 import { RuneIcon } from "@/components/icons/RuneIcons";
 import RewardScreen, { generateRewards, type RewardOption } from "@/components/screens/RewardScreen";
 import { generateDungeonMap } from "@/game/map/MapGenerator";
+import { dropBossLoot, dropEliteLoot } from "@/game/content/items";
 import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
@@ -57,7 +58,8 @@ function makeBattle(
   }
   const enemyDef = pickEnemyForFloor(dungeonId, floor, isBoss);
   const runeDefs = equippedRunes.map((id) => getRune(id));
-  const b = new BattleEngine(heroDef, enemyDef, 1, runeDefs, metrics);
+  const st = useGameStore.getState();
+  const b = new BattleEngine(heroDef, enemyDef, 1, runeDefs, metrics, st.equippedItems);
   b.start();
   return b;
 }
@@ -209,6 +211,14 @@ export default function BattleScreen() {
             particles.burst(cx, cy, 14, "#f4d36a", "star", 300, 8);
             particles.burst(cx, cy, 8, "#c9a227", "spark", 260, 6);
           }, i * 120);
+        }
+        // гарантированный дроп с элиты/босса
+        const st = useGameStore.getState();
+        const pb = st.pendingBattle;
+        if (pb && (pb.nodeType === "elite" || pb.nodeType === "boss")) {
+          const drop = pb.nodeType === "boss" ? dropBossLoot() : dropEliteLoot();
+          st.addItem(drop);
+          st.setPendingDrop(drop);
         }
       } else if (e.type === "defeat") {
         setPhaseSafe("defeat");

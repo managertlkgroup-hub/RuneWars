@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { RuneButton } from "@/components/ui/RuneButton";
 import { RunePanel } from "@/components/ui/RunePanel";
 import { MapNodeIcon } from "@/components/icons/MapIcons";
+import ChestScreen from "@/components/screens/ChestScreen";
 import {
   useGameStore,
 } from "@/game/core/GameState";
@@ -16,6 +17,8 @@ import {
   type NodeType,
 } from "@/game/map/MapGenerator";
 import { getDungeon } from "@/game/content/enemies";
+import { chestTypeForFloor, CHESTS, openChest, type ChestType } from "@/game/content/items";
+import type { ChestResult } from "@/components/screens/ChestScreen";
 import { useToast } from "@/hooks/use-toast";
 
 const CW = 1152;
@@ -55,19 +58,27 @@ export default function MapScreen() {
   const gold = useGameStore((s) => s.gold);
   const { toast } = useToast();
   const [, forceTick] = useState(0);
+  const [chestModal, setChestModal] = useState<{ chestType: ChestType; nodeId: number; result: ChestResult } | null>(null);
 
-  // генерация карты при отсутствии
+  // генерация карты при отсутствии — в эффекте (не в рендере)
   const map: DungeonMap = useMemo(() => {
     if (currentMap) return currentMap;
-    const m = generateDungeonMap(currentDungeonId);
-    setMap(m);
-    return m;
-  }, [currentMap, currentDungeonId, setMap]);
+    // временный пустой объект до генерации в эффекте
+    return { nodes: [], floors: [], currentNodeId: 0, dungeonId: currentDungeonId };
+  }, [currentMap, currentDungeonId]);
 
   useEffect(() => {
-    refreshStatuses(map);
+    if (!currentMap) {
+      const m = generateDungeonMap(currentDungeonId);
+      setMap(m);
+      return;
+    }
+    refreshStatuses(currentMap);
     forceTick((n) => n + 1);
-  }, [map]);
+    if (typeof window !== "undefined") {
+      (window as unknown as { __store?: typeof useGameStore }).__store = useGameStore;
+    }
+  }, [currentMap, currentDungeonId, setMap]);
 
   const dungeon = getDungeon(currentDungeonId);
 
@@ -107,10 +118,25 @@ export default function MapScreen() {
         setScreen("battle");
         break;
       case "chest": {
-        const g = node.data?.gold ?? 20;
-        addGold(g);
-        setLastNodeReward({ kind: "chest", amount: g, label: "Золото из сундука" });
-        toast({ title: "Сундук открыт", description: `Получено ${g} золота.` });
+        // открыть сундук: вычислить результат в event handler (можно setState)
+        let ct = chestTypeForFloor(node.floor, false);
+        const st = useGameStore.getState();
+        const initialPity = st.pityCounter;
+        // pity-гарантия: апгрейд сундука до gold (cap=epic) если кап ниже epic
+        const capOrder = CHESTS[ct].rarityCap;
+        if (initialPity >= 20 && (capOrder === "common" || capOrder === "uncommon" || capOrder === "rare")) {
+          ct = "gold";
+        }
+        let r;
+        try {
+          r = openChest(ct, initialPity);
+        } catch (err) {
+          console.error("openChest error", err, { ct, initialPity });
+          toast({ title: "Ошибка сундука", description: String(err) });
+          break;
+        }
+        st.setPityCounter(r.newPityCounter);
+        setChestModal({ chestType: ct, nodeId: node.id, result: { ...r, initialPity } });
         break;
       }
       case "camp": {
@@ -311,6 +337,13 @@ export default function MapScreen() {
               </span>
               <RuneButton
                 variant="ghost"
+                onClick={() => setScreen("inventory")}
+                className="text-[9px] py-1 px-2"
+              >
+                Инвентарь
+              </RuneButton>
+              <RuneButton
+                variant="ghost"
                 onClick={() => setScreen("equip")}
                 className="text-[9px] py-1 px-2"
               >
@@ -320,6 +353,21 @@ export default function MapScreen() {
           </div>
         </RunePanel>
       </div>
+
+      {/* модалка сундука */}
+      {chestModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-2">
+          <ChestScreen
+            chestType={chestModal.chestType}
+            result={chestModal.result}
+            onDone={() => {
+              setChestModal(null);
+              refreshStatuses(map);
+              forceTick((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

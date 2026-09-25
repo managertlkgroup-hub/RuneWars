@@ -8,6 +8,7 @@ import { GEM_BASE, CAPS, lengthMultiplier, cascadeBonus } from "../content/balan
 import type { HeroDef } from "../content/heroes";
 import type { EnemyDef } from "../content/enemies";
 import type { RuneDef, RuneId } from "../content/runes";
+import type { Item } from "../content/items";
 
 export type BattleEvent =
   | { type: "matchVfx"; groups: MatchGroup[]; cascadeLevel: number }
@@ -63,10 +64,12 @@ export class BattleEngine {
     enemyDef: EnemyDef,
     heroLevel = 1,
     equippedRunes: RuneDef[] = [],
-    metrics?: BoardEngine["metrics"]
+    metrics?: BoardEngine["metrics"],
+    equippedItems?: { weapon: Item | null; armor: Item | null; amulet: Item | null }
   ) {
     this.hero = new Hero(heroDef, heroLevel);
     this.hero.equipRunes(equippedRunes);
+    if (equippedItems) this.hero.equipItems(equippedItems);
     this.hero.applyCarriedShield();
     this.enemy = new Enemy(enemyDef);
     this.board = new BoardEngine(metrics ?? {
@@ -129,6 +132,8 @@ export class BattleEngine {
       if (g.color === 0) {
         // красный — атака
         let dmg = base.damage * lm * mult * favored;
+        // бонусы предметов: оружие (+% урона, легендарный fury_strike)
+        dmg *= hero.redDamageMultiplier();
         // руна Огонь: +50% на длине 3-4
         const fire = hero.getRune("fire");
         if (fire && fire.canUse() && g.length >= 3 && g.length <= 4) {
@@ -193,12 +198,15 @@ export class BattleEngine {
           this.emit({ type: "enemyFrozen" });
         }
         const room = Math.max(0, CAPS.shieldPerTurn - this.shieldThisTurn);
+        // бонус брони: +shield за синий матч (вне капа)
+        const itemShieldBonus = hero.itemBonuses.shieldBonus ?? 0;
         const applied = Math.min(sh, room);
+        const totalApplied = applied + (itemShieldBonus > 0 ? hero.addShield(itemShieldBonus) : 0);
         if (applied > 0) {
           hero.addShield(applied);
           this.shieldThisTurn += applied;
         }
-        this.emit({ type: "playerShield", amount: applied });
+        this.emit({ type: "playerShield", amount: totalApplied });
       } else if (g.color === 2) {
         // зелёный — лечение
         let hl = base.heal * lm * mult * favored;
@@ -300,6 +308,17 @@ export class BattleEngine {
     // реген от Жизни
     const regen = this.hero.applyLifeRegen();
     if (regen > 0) this.emit({ type: "playerHeal", amount: regen });
+
+    // бонусы амулета: +ярость/ход, +HP/ход (вне капов)
+    const ib = this.hero.itemBonuses;
+    if ((ib.ragePerTurn ?? 0) > 0) {
+      const r = this.hero.addRage(ib.ragePerTurn!);
+      if (r > 0) this.emit({ type: "playerRage", amount: r, rageStrike: false });
+    }
+    if ((ib.healPerTurn ?? 0) > 0) {
+      const h = this.hero.heal(ib.healPerTurn!);
+      if (h > 0) this.emit({ type: "playerHeal", amount: h });
+    }
 
     // тик кулдаунов героя (руны + ярость)
     this.hero.tickCooldowns();

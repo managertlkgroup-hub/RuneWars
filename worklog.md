@@ -203,3 +203,49 @@ Unresolved / Next:
 - Этап 9-10: Полировка, публикация.
 - Рекомендация: следующий webDevReview — Этап 5 (Лут и инвентарь) или доработка точек карты (магазин/лагерь/событие — сейчас базовые stub'ы).
 - Риск: shop/camp/event узлы сейчас дают только toast/toast (camp с 15% засадой). Полная реализация в Этапе 6.
+
+---
+Task ID: stage-5
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 5: Лут и инвентарь
+
+Work Log:
+- Создан src/game/content/items.ts: 5 редкостей (common 60% #8a8a8a, uncommon 25% #4a9e5c, rare 10% #4a8bff, epic 4% #a855f7, legendary 1% #ffd700). 4 типа сундуков (wooden 1 предмет cap uncommon, silver 2 cap rare, gold 3 cap epic, legendary 4 guaranteed legendary). chestTypeForFloor(floor, isBoss). rollRarity(cap, forceMin?) с clamp forceMin к cap (фикс краша при pity>cap). makeItem(category, rarity) — генерация имени (префикс по редкости + база по категории), bonus по категории: weapon +damageBonus, armor +maxHpBonus/+shieldBonus, amulet +ragePerTurn/+healPerTurn. Легендарные эффекты: fury_strike (weapon, каждый 3-й красный +50%), iron_skin (armor +15% сохранение щита), endless_rage/regen_aura (amulet). openChest(chestType, pityCounter) → {items, newPityCounter, guaranteedEpic} — pity растёт без epic+, при >=20 гарантия epic (первый предмет forceMin epic), сброс в 0 при epic+. dropEliteLoot() (rare+), dropBossLoot() (epic+).
+- Создан src/components/icons/ItemIcons.tsx: hand-written SVG для оружия (меч/топор/посох/кинжал), брони (кольчуга/мантия/кожа), амулетов (амулет/талисман/оберег). Каждая с градиентом по редкости, drop-shadow, контур 2px. EmptySlotIcon для пустых слотов.
+- Обновлён src/game/core/GameState.ts: +inventory (Item[]), +equippedItems {weapon,armor,amulet}, +pityCounter, +pendingChest, +pendingDrop. Экшены addItem, equipItem (меняет местами с текущим экипированным), unequipSlot, setPityCounter, setPendingChest, setPendingDrop. resetAll сбрасывает.
+- Обновлён src/game/battle/Hero.ts: +equippedItems, equipItems(items) — пересчитывает maxHp с бонусом брони. itemBonuses геттер суммирует все бонусы. redDamageMultiplier() — множитель красного урона с weapon.damageBonus + легендарный fury_strike (каждый 3-й +50%). preserveShieldOnVictory() учитывает легендарный iron_skin (+15%).
+- Обновлён src/game/battle/BattleEngine.ts: конструктор принимает equippedItems → hero.equipItems. В applyMatches: красный матч × hero.redDamageMultiplier(); синий матч + itemBonuses.shieldBonus (вне капа). В endTurn: +ib.ragePerTurn и +ib.healPerTurn (вне капов) — бонусы амулета каждый ход.
+- Обновлён src/components/screens/BattleScreen.tsx: makeBattle передаёт st.equippedItems в BattleEngine. Victory handler: для elite/boss — dropEliteLoot()/dropBossLoot() + addItem + setPendingDrop.
+- Создан src/components/screens/ChestScreen.tsx: модалка открытия. Результат вычисляется В РОДИТЕЛЕ (MapScreen handler, не в рендере — фикс setState-during-render). SVG сундука с откидной крышкой (transform rotate). item-pop анимация (translateY + scale). Баннер "ГАРАНТИРОВАННЫЙ ЭПИЧЕСКИЙ" при initialPity>=20. Звук по лучшей редкости (victory/levelUp/rune). "Забрать всё" / "Пропустить". Keyframes chest-shake/item-pop перенесены в globals.css (убран styled-jsx который перекрывал клики).
+- Создан src/components/screens/InventoryScreen.tsx: 3 слота экипировки (Оружие/Броня/Амулет) сверху + сетка предметов. Клик экипирует/снимает. Тултип при наведении (название + редкость + описание). Бейдж "E" на экипированных. EmptySlotIcon для пустых слотов.
+- Обновлён src/components/screens/MapScreen.tsx: chest узел → openChest в handleNodeClick (event handler, можно setState) + setChestModal с результатом. Pity-гарантия: апгрейд сундука до gold если cap ниже epic. Кнопка "Инвентарь" → screen inventory. Модалка ChestScreen рендерится overlay с переданным result.
+- Обновлён src/app/page.tsx: маршрутизация screen inventory → InventoryScreen.
+- globals.css: +keyframes chest-shake, item-pop.
+- БАГФИКСЫ: (1) rollRarity крашился при forceMin>cap (пустой массив → undefined) — добавлен clamp + guard. (2) ChestScreen setState-during-render (lazy useState вызывал setPityCounter в рендере) — результат вычисляется в event handler родителя и передаётся пропсом. (3) styled-jsx `<style jsx>` создавал absolute div перекрывающий клики — keyframes перенесены в globals.css. (4) MapScreen setMap в useMemo (setState during render) — генерация перенесена в useEffect.
+
+Верификация через agent-browser:
+- Сундук (серебряный, pity=20): открылся с анимацией (крышка откинулась), выпало 3 предмета — Рунический амулет (epic, фиолет) + Рунический талисман (rare, синий) + Обычный амулет (common, серый). Pity сбросился 20→0 (epic выпал → гарантия сработала). VLM подтвердил цвета рамок по редкости.
+- Сбор: "Забрать всё" → 3 предмета в инвентаре. Pity остался 0.
+- Инвентарь: 3 слота экипировки (Оружие/Броня/Амулет), сетка с 3 предметами, цветные рамки (фиолет/синий/серый), кнопка Закрыть. VLM подтвердил.
+- Экипировка: клик по Рунический амулет → экипирован в слот амулета, invLen 3→2. Бонус itemBonuses={ragePerTurn:3}.
+- Бой с экипированным амулетом: phase=fighting, hero.itemBonuses={ragePerTurn:3} — +3 ярости каждый ход (применяется в endTurn). maxHp=100 (без брони).
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+
+Stage Summary:
+- Этап 5 (Лут и инвентарь) ЗАВЕРШЁН и верифицирован: 4 типа сундуков, 5 редкостей (60/25/10/4/1%), pity-таймер (20→гарантия epic, сброс), 3 категории предметов с бонусами, инвентарь (сетка+слоты+тултип), chest-модалка с анимацией, elite/boss гарантированные дропы, SVG-иконки предметов, бонусы предметов в бою.
+- Pity-таймер persists между забегами (в GameState, переживёт reload).
+- Бонусы предметов применяются в бою: weapon +урон красным, armor +maxHp/+щит, amulet +ярость/ход или +HP/ход. Легендарные эффекты: fury_strike, iron_skin, endless_rage, regen_aura.
+- Артефакты: скриншоты /home/z/my-project/screenshots/ (stage5-pity-success.png — epic из pity-сундука, stage5-inventory.png — инвентарь, stage5-chest-works.png, stage5-equipped.png).
+
+Current Project Status:
+- Этапы 1-5 завершены и стабильны. Полный цикл: карта → сундук (модалка+анимация) → инвентарь (экипировка) → бой (с бонусами предметов+рун) → победа → награда → карта.
+- Статический экспорт работает (out/ = 1.4 MB).
+- lint чистый, 0 ошибок, FPS 60.
+
+Unresolved / Next:
+- Этап 6: Магазин и Лагерь (полная реализация — сейчас stub'ы: shop → toast, camp → toast/засада).
+- Этап 7: Прокачка и герои (уровни 1-30, перки, престиж).
+- Этап 8: Яндекс SDK.
+- Этап 9-10: Полировка, публикация.
+- Рекомендация: следующий webDevReview — Этап 6 (Магазин и Лагерь) для полной реализации точек карты.
+- Риск: pity-таймер в памяти (не сохраняется между сессиями) — будет сохраняться через Яндекс SDK Player.setData в Этапе 8.
