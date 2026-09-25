@@ -1,12 +1,13 @@
-// RUNE WARS — движок боя: применяет эффекты цветов, ход врага, победа/поражение
+// RUNE WARS — движок боя: эффекты цветов, руны, ход врага, победа/поражение
 
 import { BoardEngine, type BoardEvent } from "./BoardEngine";
 import { Hero } from "./Hero";
 import { Enemy } from "./Enemy";
-import type { MatchGroup } from "./types";
+import type { MatchGroup, GemColor } from "./types";
 import { GEM_BASE, CAPS, lengthMultiplier, cascadeBonus } from "../content/balance";
 import type { HeroDef } from "../content/heroes";
 import type { EnemyDef } from "../content/enemies";
+import type { RuneDef, RuneId } from "../content/runes";
 
 export type BattleEvent =
   | { type: "matchVfx"; groups: MatchGroup[]; cascadeLevel: number }
@@ -16,6 +17,9 @@ export type BattleEvent =
   | { type: "playerRage"; amount: number; rageStrike: boolean }
   | { type: "enemyAttack"; amount: number; shieldAbsorbed: number; hpDamage: number; brokeShield: boolean }
   | { type: "turnStart"; turn: number }
+  | { type: "runeTriggered"; rune: RuneId; cells?: { row: number; col: number }[] }
+  | { type: "bombVfx"; row: number; col: number; colors: GemColor[] }
+  | { type: "enemyFrozen" }
   | { type: "victory" }
   | { type: "defeat" };
 
@@ -31,9 +35,11 @@ export interface BattleState {
   enemyMaxHp: number;
   enemyName: string;
   enemyIsBoss: boolean;
+  enemyFrozen: boolean;
   turn: number;
   enemyAttackIn: number;
   phase: "idle" | "fighting" | "victory" | "defeat";
+  equippedRunes: RuneId[];
 }
 
 export class BattleEngine {
@@ -49,9 +55,19 @@ export class BattleEngine {
   private shieldThisTurn = 0;
   private healThisTurn = 0;
   private rageThisTurn = 0;
+  // вампир: лечение за ход (max 5)
+  private vampireHealThisTurn = 0;
 
-  constructor(heroDef: HeroDef, enemyDef: EnemyDef, heroLevel = 1, metrics?: BoardEngine["metrics"]) {
+  constructor(
+    heroDef: HeroDef,
+    enemyDef: EnemyDef,
+    heroLevel = 1,
+    equippedRunes: RuneDef[] = [],
+    metrics?: BoardEngine["metrics"]
+  ) {
     this.hero = new Hero(heroDef, heroLevel);
+    this.hero.equipRunes(equippedRunes);
+    this.hero.applyCarriedShield();
     this.enemy = new Enemy(enemyDef);
     this.board = new BoardEngine(metrics ?? {
       cellSize: 60,
@@ -88,14 +104,20 @@ export class BattleEngine {
     this.shieldThisTurn = 0;
     this.healThisTurn = 0;
     this.rageThisTurn = 0;
+    this.vampireHealThisTurn = 0;
   }
 
   private applyMatches(groups: MatchGroup[], cascadeLevel: number) {
     const hero = this.hero;
     const enemy = this.enemy;
     const mult = 1 + cascadeBonus(cascadeLevel);
+    // руна Мудрец: +1 к длине для множителя
+    const sage = hero.getRune("sage");
+    // руна Хаос: считаем обмены (по turnEnd, но здесь — по факту матча)
     for (const g of groups) {
-      const lm = lengthMultiplier(g.length);
+      // эффективная длина с Мудрецом
+      const effLen = sage && sage.canUse() ? g.length + 1 : g.length;
+      const lm = lengthMultiplier(effLen);
       const base = {
         damage: GEM_BASE.damage[Math.min(g.length, GEM_BASE.damage.length - 1)],
         shield: GEM_BASE.shield[Math.min(g.length, GEM_BASE.shield.length - 1)],
@@ -107,36 +129,69 @@ export class BattleEngine {
       if (g.color === 0) {
         // красный — атака
         let dmg = base.damage * lm * mult * favored;
-        // ярость-удар ×2
+        // руна Огонь: +50% на длине 3-4
+        const fire = hero.getRune("fire");
+        if (fire && fire.canUse() && g.length >= 3 && g.length <= 4) {
+          dmg *= fire.effectivePower;
+          fire.markUsed();
+          this.emit({ type: "runeTriggered", rune: "fire" });
+        }
+        // ярость-удар (×2 базово, ×3 с Гневом)
         let rageStrike = false;
         if (hero.canRageStrike()) {
-          dmg *= 2;
+          dmg *= hero.rageStrikeMultiplier();
           hero.consumeRageStrike();
           rageStrike = true;
         }
         // dodge (тень)
         const dodged = enemy.hasDodge && Math.random() < 0.3;
         if (!dodged) {
-          // cap по урону за ход
           const room = Math.max(0, CAPS.damagePerTurn - this.damageThisTurn);
           const applied = Math.min(dmg, room);
           if (applied > 0) {
             enemy.takeDamage(applied);
             this.damageThisTurn += applied;
+            // руна Вампир: 20% урона → HP, max 5/ход
+            const vamp = hero.getRune("vampire");
+            if (vamp && applied > 0) {
+              const vHeal = Math.min(5 - this.vampireHealThisTurn, applied * vamp.effectivePower);
+              if (vHeal > 0) {
+                const healed = hero.heal(vHeal);
+                this.vampireHealThisTurn += healed;
+                if (healed > 0) this.emit({ type: "playerHeal", amount: healed });
+              }
+            }
           }
           this.emit({ type: "playerDamage", amount: applied, crit: rageStrike, dodged: false });
+          // руна Кузнец: бомба на красном 5+
+          const smith = hero.getRune("smith");
+          if (smith && smith.canUse() && g.length >= 5 && smith.bombsThisTurn < 1) {
+            this.triggerBomb(g);
+            smith.markUsed();
+            smith.bombsThisTurn++;
+            this.emit({ type: "runeTriggered", rune: "smith" });
+          }
         } else {
           this.emit({ type: "playerDamage", amount: 0, crit: false, dodged: true });
         }
-        // победа сразу при смерти
         if (enemy.isDead()) {
           this.phase = "victory";
+          this.hero.preserveShieldOnVictory();
           this.emit({ type: "victory" });
           return;
         }
       } else if (g.color === 1) {
         // синий — щит
         let sh = base.shield * lm * mult * favored;
+        // руна Лёд: синий 4+ замораживает врага
+        const ice = hero.getRune("ice");
+        if (ice && ice.canUse() && g.length >= 4 && !enemy.frozen) {
+          enemy.freeze();
+          ice.markUsed();
+          ice.setCooldown(2);
+          this.emit({ type: "runeTriggered", rune: "ice" });
+          this.emit({ type: "enemyFrozen" });
+        }
         const room = Math.max(0, CAPS.shieldPerTurn - this.shieldThisTurn);
         const applied = Math.min(sh, room);
         if (applied > 0) {
@@ -147,6 +202,14 @@ export class BattleEngine {
       } else if (g.color === 2) {
         // зелёный — лечение
         let hl = base.heal * lm * mult * favored;
+        // руна Жизнь: двойное лечение + реген 3 хода
+        const life = hero.getRune("life");
+        if (life && life.canUse()) {
+          hl *= life.effectivePower;
+          life.lifeRegenStacks = 3;
+          life.markUsed();
+          this.emit({ type: "runeTriggered", rune: "life" });
+        }
         const room = Math.max(0, CAPS.healPerTurn - this.healThisTurn);
         const applied = Math.min(hl, room);
         if (applied > 0) {
@@ -157,6 +220,13 @@ export class BattleEngine {
       } else if (g.color === 3) {
         // жёлтый — ярость
         let rg = base.rage * lm * mult * favored;
+        // руна Гнев: ярость ×2
+        const wrath = hero.getRune("wrath");
+        if (wrath && wrath.canUse()) {
+          rg *= wrath.effectivePower;
+          wrath.markUsed();
+          this.emit({ type: "runeTriggered", rune: "wrath" });
+        }
         const room = Math.max(0, CAPS.ragePerTurn - this.rageThisTurn);
         const applied = Math.min(rg, room);
         if (applied > 0) {
@@ -168,12 +238,70 @@ export class BattleEngine {
     }
   }
 
+  /** Руна Кузнец: бомба 3×3 — применяет базовые эффекты всех цветов в области. */
+  private triggerBomb(matchGroup: MatchGroup) {
+    const center = matchGroup.cells[Math.floor(matchGroup.cells.length / 2)];
+    const colors: GemColor[] = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = center.row + dr;
+        const c = center.col + dc;
+        if (r < 0 || r >= 7 || c < 0 || c >= 7) continue;
+        const gem = this.board.grid[r][c];
+        if (gem) colors.push(gem.color);
+      }
+    }
+    this.emit({ type: "bombVfx", row: center.row, col: center.col, colors });
+    // применить базовые эффекты по цветам
+    const hero = this.hero;
+    const enemy = this.enemy;
+    for (const color of colors) {
+      if (color === 0) {
+        const room = Math.max(0, CAPS.damagePerTurn - this.damageThisTurn);
+        const applied = Math.min(8, room);
+        if (applied > 0) {
+          enemy.takeDamage(applied);
+          this.damageThisTurn += applied;
+          this.emit({ type: "playerDamage", amount: applied, crit: false, dodged: false });
+        }
+      } else if (color === 1) {
+        const room = Math.max(0, CAPS.shieldPerTurn - this.shieldThisTurn);
+        const applied = Math.min(5, room);
+        if (applied > 0) {
+          hero.addShield(applied);
+          this.shieldThisTurn += applied;
+          this.emit({ type: "playerShield", amount: applied });
+        }
+      } else if (color === 2) {
+        const room = Math.max(0, CAPS.healPerTurn - this.healThisTurn);
+        const applied = Math.min(4, room);
+        if (applied > 0) {
+          hero.heal(applied);
+          this.healThisTurn += applied;
+          this.emit({ type: "playerHeal", amount: applied });
+        }
+      } else if (color === 3) {
+        const room = Math.max(0, CAPS.ragePerTurn - this.rageThisTurn);
+        const applied = Math.min(8, room);
+        if (applied > 0) {
+          hero.addRage(applied);
+          this.rageThisTurn += applied;
+          this.emit({ type: "playerRage", amount: applied, rageStrike: false });
+        }
+      }
+    }
+  }
+
   private endTurn() {
     if (this.phase !== "fighting") return;
     this.turn++;
     this.emit({ type: "turnStart", turn: this.turn });
 
-    // тик кулдаунов героя
+    // реген от Жизни
+    const regen = this.hero.applyLifeRegen();
+    if (regen > 0) this.emit({ type: "playerHeal", amount: regen });
+
+    // тик кулдаунов героя (руны + ярость)
     this.hero.tickCooldowns();
 
     // сброс per-turn счётчиков
@@ -181,6 +309,16 @@ export class BattleEngine {
     this.shieldThisTurn = 0;
     this.healThisTurn = 0;
     this.rageThisTurn = 0;
+    this.vampireHealThisTurn = 0;
+
+    // руна Хаос: каждый 5-й ход — перекраска
+    const chaos = this.hero.getRune("chaos");
+    if (chaos && this.turn % 5 === 0) {
+      const changed = this.board.chaosRecolor();
+      if (changed.length > 0) {
+        this.emit({ type: "runeTriggered", rune: "chaos", cells: changed });
+      }
+    }
 
     // ход врага
     const willAttack = this.enemy.tickAttack();
@@ -188,9 +326,9 @@ export class BattleEngine {
       this.enemyAttack();
     }
 
-    // проверка конца боя
     if (this.enemy.isDead()) {
       this.phase = "victory";
+      this.hero.preserveShieldOnVictory();
       this.emit({ type: "victory" });
     } else if (this.hero.isDead()) {
       this.phase = "defeat";
@@ -206,7 +344,6 @@ export class BattleEngine {
     let shieldAbsorbed = 0;
     let hpDamage = 0;
     if (brokeShield) {
-      // игнор щита
       hpDamage = atk;
       hero.hp = Math.max(0, hero.hp - atk);
     } else {
@@ -225,7 +362,6 @@ export class BattleEngine {
     });
   }
 
-  /** Снимпshot состояния для UI. */
   snapshot(): BattleState {
     return {
       heroHp: this.hero.hp,
@@ -237,9 +373,11 @@ export class BattleEngine {
       enemyMaxHp: this.enemy.maxHp,
       enemyName: this.enemy.def.name,
       enemyIsBoss: this.enemy.def.isBoss,
+      enemyFrozen: this.enemy.frozen,
       turn: this.turn,
       enemyAttackIn: this.enemy.attackCountdown,
       phase: this.phase,
+      equippedRunes: this.hero.runes.map((r) => r.id),
     };
   }
 }

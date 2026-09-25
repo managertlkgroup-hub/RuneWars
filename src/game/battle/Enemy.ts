@@ -33,14 +33,28 @@ export class Enemy {
     return this.maxHp > 0 ? this.hp / this.maxHp : 0;
   }
 
+  /** Заморозка (руна Лёд): пропускает следующую атаку. */
+  frozen: boolean = false;
+
   /** Тик: возвращает true если сейчас ход атаки врага. */
   tickAttack(): boolean {
+    // если заморожен — пропустить атаку, снять заморозку
+    if (this.frozen) {
+      this.frozen = false;
+      this.attackCountdown = Math.max(1, this.attackCountdown);
+      return false;
+    }
     this.attackCountdown--;
     if (this.attackCountdown <= 0) {
       this.attackCountdown = this.def.attackInterval;
       return true;
     }
     return false;
+  }
+
+  /** Заморозить врага. */
+  freeze(): void {
+    this.frozen = true;
   }
 
   /** Особые механики (упрощённо для этапа 2). */

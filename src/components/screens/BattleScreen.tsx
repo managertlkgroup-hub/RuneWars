@@ -10,6 +10,9 @@ import { useGameStore } from "@/game/core/GameState";
 import { getAudio } from "@/game/core/AudioEngine";
 import { RunePanel, PanelTitle } from "@/components/ui/RunePanel";
 import { RuneButton } from "@/components/ui/RuneButton";
+import { RuneIcon } from "@/components/icons/RuneIcons";
+import RewardScreen, { generateRewards, type RewardOption } from "@/components/screens/RewardScreen";
+import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
   GEM_COLOR_HEX,
@@ -17,6 +20,8 @@ import {
 } from "@/game/content/balance";
 import { HEROES, getHero } from "@/game/content/heroes";
 import { pickEnemyForFloor } from "@/game/content/enemies";
+import { RUNES, getRune, type RuneDef, type RuneId } from "@/game/content/runes";
+import type { RuneState } from "@/game/battle/Rune";
 
 const CW = 1152;
 const CH = 648;
@@ -30,25 +35,31 @@ function computeMetrics() {
   return { cellSize, originX, originY, boardW, boardH };
 }
 
-function makeBattle(metrics: ReturnType<typeof computeMetrics>): BattleEngine {
+function makeBattle(
+  metrics: ReturnType<typeof computeMetrics>,
+  equippedRunes: RuneId[]
+): BattleEngine {
   const heroDef = getHero("warrior");
   const floors = [1, 1, 2, 2, 3];
   const floor = floors[Math.floor(Math.random() * floors.length)];
   const isBoss = Math.random() < 0.25;
   const enemyDef = pickEnemyForFloor(1, floor, isBoss);
-  const b = new BattleEngine(heroDef, enemyDef, 1, metrics);
+  const runeDefs = equippedRunes.map((id) => getRune(id));
+  const b = new BattleEngine(heroDef, enemyDef, 1, runeDefs, metrics);
   b.start();
   return b;
 }
 
-type Phase = "loading" | "fighting" | "victory" | "defeat";
+type Phase = "loading" | "fighting" | "victory" | "defeat" | "reward" | "equip";
 
 export default function BattleScreen() {
   const metrics = useMemo(() => computeMetrics(), []);
   const [particles] = useState(() => new ParticlePool());
-  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics));
+  const equippedRunes = useGameStore((s) => s.equippedRunes);
+  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics, []));
   const [snap, setSnap] = useState<BattleState | null>(() => battle.snapshot());
   const [phase, setPhase] = useState<Phase>("fighting");
+  const [rewards, setRewards] = useState<RewardOption[]>([]);
   const [, forceTick] = useState(0);
 
   const boardRendererRef = useRef<BoardRenderer | null>(null);
@@ -59,11 +70,20 @@ export default function BattleScreen() {
   const setCombo = useGameStore((s) => s.setCombo);
   const bumpMaxCombo = useGameStore((s) => s.bumpMaxCombo);
   const incMatches = useGameStore((s) => s.incMatches);
+  const addGold = useGameStore((s) => s.addGold);
+  const addOwnedRune = useGameStore((s) => s.addOwnedRune);
+  const upgradeRune = useGameStore((s) => s.upgradeRune);
   const score = useGameStore((s) => s.score);
   const combo = useGameStore((s) => s.combo);
   const maxCombo = useGameStore((s) => s.maxCombo);
   const totalMatches = useGameStore((s) => s.totalMatches);
+  const gold = useGameStore((s) => s.gold);
   const setDebugReady = useGameStore((s) => s.setDebugReady);
+
+  const setPhaseSafe = useCallback((p: Phase) => {
+    phaseRef.current = p;
+    setPhase(p);
+  }, []);
 
   // Единый обработчик событий боя
   const handleBattleEvent = useCallback(
@@ -126,9 +146,48 @@ export default function BattleScreen() {
         charR?.triggerEnemyAttack();
         boardR?.addShake(e.brokeShield ? 12 : 7);
         audio.play("enemyAttack");
+      } else if (e.type === "runeTriggered") {
+        // VFX активации руны: вспышка в центре поля
+        const m = b.board.metrics;
+        const cx = m.originX + m.boardW / 2;
+        const cy = m.originY + m.boardH / 2;
+        const def = getRune(e.rune);
+        const glow = GEM_COLOR_HEX[def.color]?.glow ?? "rgba(201,162,39,0.6)";
+        particles.burst(cx, cy, 16, "#f4d36a", "star", 280, 8);
+        particles.burst(cx, cy, 10, GEM_COLOR_HEX[def.color]?.light ?? "#fff", "magic", 200, 6);
+        // для хаоса — искры на изменённых клетках
+        if (e.rune === "chaos" && e.cells) {
+          for (const c of e.cells) {
+            const { x, y } = b.board.cellCenter(c.row, c.col);
+            particles.burst(x, y, 8, GEM_COLOR_HEX[c.color]?.light ?? "#aa44ff", "spark", 220, 6);
+            particles.spawn(x, y, { vx: 0, vy: -40, maxLife: 0.6, size: 10, color: glow, type: "magic" });
+          }
+        }
+        audio.play("rune");
+      } else if (e.type === "bombVfx") {
+        // взрыв 3×3
+        const { x, y } = b.board.cellCenter(e.row, e.col);
+        const cs = b.board.metrics.cellSize;
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const px = x + dc * cs;
+            const py = y + dr * cs;
+            particles.burst(px, py, 8, "#ff6a22", "explosion", 300, 8);
+            particles.burst(px, py, 5, "#ffeebb", "spark", 200, 5);
+          }
+        }
+        boardR?.addShake(10);
+        audio.play("bomb");
+      } else if (e.type === "enemyFrozen") {
+        // ледяная вспышка на враге
+        const cx = 968;
+        const cy = 300;
+        particles.burst(cx, cy, 16, "#aaddff", "star", 240, 8);
+        particles.burst(cx, cy, 10, "#7fb0ff", "magic", 180, 6);
+        charR?.triggerEnemyHit();
+        audio.play("freeze");
       } else if (e.type === "victory") {
-        phaseRef.current = "victory";
-        setPhase("victory");
+        setPhaseSafe("victory");
         audio.play("victory");
         const cx = 968;
         const cy = 300;
@@ -139,17 +198,14 @@ export default function BattleScreen() {
           }, i * 120);
         }
       } else if (e.type === "defeat") {
-        phaseRef.current = "defeat";
-        setPhase("defeat");
+        setPhaseSafe("defeat");
         audio.play("defeat");
         boardR?.addShake(14);
-      } else if (e.type === "turnStart") {
-        // UI обновится через setSnap ниже
       }
       setSnap(b.snapshot());
       forceTick((n) => n + 1);
     },
-    [battle, particles, addScore, bumpMaxCombo, incMatches, setCombo]
+    [battle, particles, addScore, bumpMaxCombo, incMatches, setCombo, setPhaseSafe]
   );
 
   // Подписка на события боя + debug + audio focus
@@ -160,6 +216,7 @@ export default function BattleScreen() {
         battle,
         particles,
       };
+      (window as unknown as { __store?: typeof useGameStore }).__store = useGameStore;
     }
     setDebugReady(true);
     const readyT = setTimeout(() => setDebugReady(false), 90000);
@@ -210,7 +267,6 @@ export default function BattleScreen() {
     },
   });
 
-  // Клик по канвасу
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -225,19 +281,53 @@ export default function BattleScreen() {
     if (clicked) getAudio().play("click");
   };
 
-  // Перезапуск боя
-  const handleRestart = () => {
+  // Перезапуск боя с экипированными рунами
+  const startNewBattle = useCallback(() => {
     particles.clear();
     charRendererRef.current?.clear();
     boardRendererRef.current = null;
     charRendererRef.current = null;
-    const b = makeBattle(metrics);
+    const eqIds = useGameStore.getState().equippedRunes;
+    const b = makeBattle(metrics, eqIds);
     useGameStore.getState().resetRun();
-    phaseRef.current = "fighting";
-    setPhase("fighting");
     setSnap(b.snapshot());
     setBattle(b);
+    setPhaseSafe("fighting");
+  }, [metrics, particles, setPhaseSafe]);
+
+  // Victory → награда
+  const handleClaimReward = () => {
+    const st = useGameStore.getState();
+    const hasUpgradable = st.ownedRunes.some((r) => r.level < 3);
+    setRewards(generateRewards(st.ownedRunes, st.equippedRunes.length, hasUpgradable));
+    setPhaseSafe("reward");
   };
+
+  // Выбор награды
+  const handlePickReward = (opt: RewardOption) => {
+    if (opt.kind === "rune" && opt.runeId && opt.rarity) {
+      addOwnedRune({ id: opt.runeId, level: 1, rarity: opt.rarity });
+    } else if (opt.kind === "gold" && opt.amount) {
+      addGold(opt.amount);
+    } else if (opt.kind === "heal") {
+      // переносимое лечение — добавим как временное (упрощённо: +gold для лагеря)
+      addGold(Math.floor(opt.amount / 2));
+    } else if (opt.kind === "upgrade") {
+      // улучшаем первую апгрейдабельную руну
+      const owned = useGameStore.getState().ownedRunes;
+      const upgradable = owned.find((r) => r.level < 3);
+      if (upgradable) upgradeRune(upgradable.id);
+    }
+    setPhaseSafe("equip");
+  };
+
+  // Кнопка "Новый бой" из non-victory (сброс)
+  const handleQuickRestart = () => {
+    useGameStore.getState().resetRun();
+    startNewBattle();
+  };
+
+  const equippedDefs: RuneDef[] = equippedRunes.map((id) => getRune(id));
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-rune-bg overflow-hidden">
@@ -249,24 +339,28 @@ export default function BattleScreen() {
       />
 
       <div className="relative z-10 w-full max-w-[1280px] px-2 sm:px-4 py-2 flex flex-col items-center gap-2">
-        {/* Заголовок + этаж */}
+        {/* Заголовок + этаж + золото */}
         <div className="w-full flex items-center justify-between gap-2">
           <div className="font-pixel text-rune-gold text-glow-gold text-[10px] sm:text-sm uppercase tracking-widest">
             RUNE WARS
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <span className="font-pixel text-[9px] text-rune-gold-light flex items-center gap-1">
+              <svg width="12" height="12" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#c9a227" stroke="#1a0a1e" strokeWidth="3" /></svg>
+              {gold}
+            </span>
             <span className="font-pixel text-[8px] sm:text-[10px] text-rune-muted uppercase">
               {snap?.enemyIsBoss ? "БОСС" : "Бой"} · {snap?.enemyName ?? ""}
             </span>
-            <RuneButton variant="ghost" onClick={handleRestart} className="text-[10px] py-1 px-2">
-              Новый бой
+            <RuneButton variant="ghost" onClick={handleQuickRestart} className="text-[10px] py-1 px-2">
+              Сброс
             </RuneButton>
           </div>
         </div>
 
         {/* Поле + боковые HUD */}
         <div className="w-full flex flex-col lg:flex-row gap-2 items-center justify-center">
-          {/* Левая панель — герой */}
+          {/* Левая панель — герой + руны */}
           <div className="hidden lg:flex w-56 flex-col gap-2">
             <RunePanel glow>
               <PanelTitle>{HEROES[0].title} — {HEROES[0].name}</PanelTitle>
@@ -277,20 +371,45 @@ export default function BattleScreen() {
                 <Row label="Ход" value={`${snap?.turn ?? 0}`} />
                 <Row
                   label="Атака врага"
-                  value={`через ${snap?.enemyAttackIn ?? 0}`}
-                  accent={snap && snap.enemyAttackIn <= 1 ? "text-rune-red" : "text-rune-text"}
+                  value={snap?.enemyFrozen ? "ЗАМОРОЖЕН" : `через ${snap?.enemyAttackIn ?? 0}`}
+                  accent={snap?.enemyFrozen ? "text-rune-blue" : snap && snap.enemyAttackIn <= 1 ? "text-rune-red" : "text-rune-text"}
                 />
                 {snap?.heroRageStrikeReady && (
                   <div className="mt-1 text-center font-pixel text-[8px] text-rune-gold-light text-glow-gold animate-pulse">
-                    УЛЬТА ×2
+                    УЛЬТА ×{battle.hero.rageStrikeMultiplier()}
                   </div>
                 )}
+              </div>
+            </RunePanel>
+            {/* Экипированные руны с живыми статусами */}
+            <RunePanel>
+              <PanelTitle>Руны ({equippedDefs.length}/3)</PanelTitle>
+              <div className="p-2 flex flex-col gap-1">
+                {equippedDefs.length === 0 && (
+                  <span className="font-body text-[10px] text-rune-muted py-2 text-center">нет рун</span>
+                )}
+                {equippedDefs.map((d) => {
+                  const st = battle.hero.getRune(d.id);
+                  const status = st ? runeStatusText(d.id, st, battle) : null;
+                  const ready = st ? st.canUse() : false;
+                  return (
+                    <div key={d.id} className="flex items-center gap-2 px-1 py-0.5 rounded" style={{ background: ready ? "rgba(201,162,39,0.08)" : "transparent" }}>
+                      <RuneIcon rune={d.id} size={26} />
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="font-pixel text-[7px] text-rune-text leading-tight">{d.name}</span>
+                        {status && (
+                          <span className={`font-body text-[8px] leading-tight ${status.accent ?? "text-rune-muted"}`}>{status.text}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </RunePanel>
             <ColorLegend />
           </div>
 
-          {/* Canvas */}
+          {/* Canvas + overlays */}
           <div
             className="relative w-full max-w-[720px]"
             style={{ aspectRatio: `${CW} / ${CH}` }}
@@ -310,8 +429,8 @@ export default function BattleScreen() {
                 titleColor="text-rune-gold text-glow-gold"
                 subtitle={snap ? `Враг повержен за ${snap.turn} ходов` : ""}
                 score={score}
-                onAction={handleRestart}
-                actionLabel="Новый бой"
+                onAction={handleClaimReward}
+                actionLabel="Забрать награду"
               />
             )}
             {phase === "defeat" && (
@@ -320,10 +439,18 @@ export default function BattleScreen() {
                 titleColor="text-rune-red text-glow-blood"
                 subtitle="Герой пал в бою"
                 score={score}
-                onAction={handleRestart}
+                onAction={handleQuickRestart}
                 actionLabel="Попробовать снова"
               />
             )}
+            {phase === "reward" && (
+              <RewardScreen
+                rewards={rewards}
+                onPick={handlePickReward}
+                onSkip={() => setPhaseSafe("equip")}
+              />
+            )}
+            {phase === "equip" && <EquipScreen onStart={startNewBattle} />}
           </div>
 
           {/* Правая панель — статистика */}
@@ -376,6 +503,41 @@ function Stat({ label, value, color }: { label: string; value: React.ReactNode; 
       <span className={`font-pixel text-[11px] ${color ?? "text-rune-text"}`}>{value}</span>
     </div>
   );
+}
+
+/** Живой статус руны для боевого HUD. */
+function runeStatusText(
+  id: RuneId,
+  st: RuneState,
+  battle: BattleEngine
+): { text: string; accent?: string } | null {
+  switch (id) {
+    case "ice":
+      if (st.cooldown > 0) return { text: `КД ${st.cooldown} х.`, accent: "text-rune-blue" };
+      if (battle.enemy.frozen) return { text: "Враг заморожен", accent: "text-rune-blue" };
+      return { text: "Готова", accent: "text-rune-green" };
+    case "chaos": {
+      const turnsToChaos = 5 - (battle.turn % 5);
+      return { text: `Перекраска через ${turnsToChaos} х.`, accent: "text-rune-yellow" };
+    }
+    case "smith":
+      if (st.bombsThisTurn >= 1) return { text: "Бомба выставлена", accent: "text-rune-warm" };
+      if (st.canUse()) return { text: "Бомба готова (5+)", accent: "text-rune-green" };
+      return { text: "Использована", accent: "text-rune-muted" };
+    case "life":
+      if (st.lifeRegenStacks > 0) return { text: `Реген ${st.lifeRegenStacks} х.`, accent: "text-rune-green" };
+      return { text: "Готова", accent: "text-rune-green" };
+    case "wrath":
+      return { text: `Ярость ×2, ульта ×3`, accent: "text-rune-yellow" };
+    case "vampire":
+      return { text: `Вампир +${Math.floor(st.effectivePower * 100)}% урона`, accent: "text-rune-red" };
+    case "guardian":
+      return { text: `Щит ${Math.floor(st.effectivePower * 100)}% переходит`, accent: "text-rune-blue" };
+    case "fire":
+      return { text: `+${Math.floor((st.effectivePower - 1) * 100)}% к красным 3-4`, accent: "text-rune-red" };
+    case "sage":
+      return { text: `+1 к длине (множитель)`, accent: "text-rune-green" };
+  }
 }
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: string }) {

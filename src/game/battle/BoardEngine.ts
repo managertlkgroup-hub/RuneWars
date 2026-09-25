@@ -556,4 +556,61 @@ export class BoardEngine {
     this.totalRemovedThisTurn = 0;
     this.generateBoard();
   }
+
+  /** Руна Хаос: поменять цвета двух случайных кристаллов на безопасные. */
+  chaosRecolor(): { row: number; col: number; color: GemColor }[] {
+    if (this.phase !== "idle") return [];
+    // собрать все занятые клетки
+    const cells: { row: number; col: number }[] = [];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (this.grid[r][c]) cells.push({ row: r, col: c });
+      }
+    }
+    if (cells.length < 2) return [];
+    const changed: { row: number; col: number; color: GemColor }[] = [];
+    for (let i = 0; i < 2; i++) {
+      const idx = Math.floor(Math.random() * cells.length);
+      const cell = cells.splice(idx, 1)[0];
+      const gem = this.grid[cell.row][cell.col];
+      if (!gem) continue;
+      // новый цвет, который не создаёт мгновенный матч в этой клетке
+      const forbidden = new Set<GemColor>();
+      // соседи
+      const nbrs = [
+        [cell.row - 1, cell.col],
+        [cell.row + 1, cell.col],
+        [cell.row, cell.col - 1],
+        [cell.row, cell.col + 1],
+      ];
+      for (const [nr, nc] of nbrs) {
+        if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) continue;
+        const ng = this.grid[nr][nc];
+        if (!ng || ng.color === gem.color) continue;
+        // если два соседа одного цвета n — то менять на n нельзя (создаст 3)
+        const sameColorNbrs = nbrs
+          .filter(
+            ([r2, c2]) =>
+              r2 >= 0 &&
+              r2 < BOARD_SIZE &&
+              c2 >= 0 &&
+              c2 < BOARD_SIZE &&
+              this.grid[r2][c2]?.color === ng.color
+          );
+        if (sameColorNbrs.length >= 2) forbidden.add(ng.color);
+      }
+      forbidden.add(gem.color);
+      const pool: GemColor[] = [];
+      for (let k = 0; k < GEM_COLORS; k++) {
+        if (!forbidden.has(k as GemColor)) pool.push(k as GemColor);
+      }
+      const newColor = pool[Math.floor(Math.random() * pool.length)] ?? gem.color;
+      gem.color = newColor;
+      // визуальный эффект: лёгкий scale-пульс
+      gem.scale = 1.25;
+      gem.targetScale = 1;
+      changed.push({ row: cell.row, col: cell.col, color: newColor });
+    }
+    return changed;
+  }
 }

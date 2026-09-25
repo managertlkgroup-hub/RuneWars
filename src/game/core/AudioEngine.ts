@@ -14,6 +14,9 @@ type SoundName =
   | "shield"
   | "rage"
   | "rageStrike"
+  | "rune"
+  | "bomb"
+  | "freeze"
   | "victory"
   | "defeat"
   | "levelUp";
@@ -157,6 +160,21 @@ export class AudioEngine {
         this.tone(220, 0.08, "sawtooth", 0.3, 0, 880);
         this.tone(880, 0.18, "square", 0.25, 0.08, 220);
         this.noise(0.1, 0.2, 0.08, 1200);
+        break;
+      case "rune":
+        // восходящий аккорд — активация руны
+        [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.12, "triangle", 0.16, i * 0.04));
+        break;
+      case "bomb":
+        this.noise(0.22, 0.35, 0, 400);
+        this.tone(80, 0.2, "sawtooth", 0.35, 0, 40);
+        this.tone(160, 0.15, "square", 0.2, 0.02, 60);
+        break;
+      case "freeze":
+        // ледяной звон
+        this.tone(1320, 0.2, "sine", 0.18, 0, 1760);
+        this.tone(1760, 0.18, "sine", 0.12, 0.06, 2200);
+        this.noise(0.15, 0.08, 0.02, 2000);
         break;
       case "victory":
         // фанфары
