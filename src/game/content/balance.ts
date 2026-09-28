@@ -37,12 +37,12 @@ export function cascadeBonus(cascadeLevel: number): number {
   return Math.min(cascadeLevel * CASCADE_BONUS_PER, CASCADE_BONUS_MAX);
 }
 
-// Базовые значения для кристаллов по длине
+// Базовые значения для кристаллов по длине (лечение уменьшено для баланса)
 export const GEM_BASE = {
-  damage: [0, 0, 0, 8, 12, 16, 20, 24], // индекс = длина; [3]=8, [4]=12, ...
-  shield: [0, 0, 0, 5, 7, 10, 12, 15],
-  heal: [0, 0, 0, 4, 6, 8, 10, 12],
-  rage: [0, 0, 0, 8, 12, 16, 20, 24],
+  damage: [0, 0, 0, 8, 12, 16, 20, 24],
+  shield: [0, 0, 0, 4, 6, 8, 10, 12],
+  heal: [0, 0, 0, 2, 3, 4, 5, 6],
+  rage: [0, 0, 0, 6, 9, 12, 15, 18],
 };
 
 export function baseValue(kind: "damage" | "shield" | "heal" | "rage", length: number): number {

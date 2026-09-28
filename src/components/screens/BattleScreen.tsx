@@ -238,11 +238,11 @@ export default function BattleScreen() {
         const st = useGameStore.getState();
         st.setHeroHp(b.hero.hp);
         st.setHeroMaxHp(b.hero.maxHp);
-        // награда dungeonGold: 4 + floor*2 (элита ×2, босс ×3 + 30)
+        // награда dungeonGold: 3 + floor*1 (элита ×1.5, босс 30+floor*5)
         const pb2 = st.pendingBattle;
-        let goldReward = 4 + (pb2?.floor ?? 1) * 2;
-        if (pb2?.nodeType === "elite") goldReward *= 2;
-        if (pb2?.isBoss) goldReward = goldReward * 3 + 30;
+        let goldReward = 3 + (pb2?.floor ?? 1) * 1;
+        if (pb2?.nodeType === "elite") goldReward = Math.round(goldReward * 1.5);
+        if (pb2?.isBoss) goldReward = 30 + (pb2?.floor ?? 5) * 5;
         st.addDungeonGold(goldReward);
         const cx = 968;
         const cy = 300;
@@ -396,6 +396,10 @@ export default function BattleScreen() {
       let xp = 15 * floor;
       if (pb.nodeType === "elite") xp = 40 * floor;
       if (pb.isBoss) xp = 150 * floor;
+      // бонус за прохождение этажа
+      xp += 50;
+      // бонус за прохождение подземелья (босс)
+      if (pb.isBoss) xp += 300;
       const xpResult = st.addHeroXp(st.activeHero, xp);
       if (xpResult.perksToChoose.length > 0) {
         st.setPendingPerkLevel(xpResult.perksToChoose[0]);
