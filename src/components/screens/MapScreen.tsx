@@ -337,6 +337,13 @@ export default function MapScreen() {
               </span>
               <RuneButton
                 variant="ghost"
+                onClick={() => setScreen("camp")}
+                className="text-[9px] py-1 px-2"
+              >
+                Лагерь
+              </RuneButton>
+              <RuneButton
+                variant="ghost"
                 onClick={() => setScreen("heroSelect")}
                 className="text-[9px] py-1 px-2"
               >

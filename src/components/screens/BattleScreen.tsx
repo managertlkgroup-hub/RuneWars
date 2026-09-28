@@ -15,6 +15,7 @@ import RewardScreen, { generateRewards, type RewardOption } from "@/components/s
 import { generateDungeonMap } from "@/game/map/MapGenerator";
 import { dropBossLoot, dropEliteLoot } from "@/game/content/items";
 import { computePerkEffects } from "@/game/content/perks";
+import { computeCampUpgradeEffects } from "@/game/content/campUpgrades";
 import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
@@ -26,6 +27,7 @@ import { pickEnemyForFloor } from "@/game/content/enemies";
 import { RUNES, getRune, type RuneDef, type RuneId } from "@/game/content/runes";
 import type { RuneState } from "@/game/battle/Rune";
 import type { PendingBattle } from "@/game/core/GameState";
+import type { RunBonuses } from "@/game/battle/BattleEngine";
 
 const CW = 1152;
 const CH = 648;
@@ -64,6 +66,17 @@ function makeBattle(
   const activeHeroDef = getHero(st.activeHero as HeroMechanicId);
   // эффекты перков
   const perkEffects = computePerkEffects(st.activeHero, st.heroPerks, st.heroPrestige);
+  // эффекты улучшений лагеря (мета-бонусы ко всем героям)
+  const campEffects = computeCampUpgradeEffects(st.campUpgrades);
+  // объединить runBonuses + campEffects
+  const combinedRunBonuses: RunBonuses = {
+    ...st.runBonuses,
+    redDamageFlat: (st.runBonuses.redDamageFlat ?? 0) + (campEffects.redDamageFlat ?? 0),
+    maxHpBonus: (st.runBonuses.maxHpBonus ?? 0) + (campEffects.maxHpBonus ?? 0),
+    startShield: (st.runBonuses.startShield ?? 0) + (campEffects.startShield ?? 0),
+  };
+  // campEffects.healFlat → добавить к perkEffects.healFlat
+  if (campEffects.healFlat) perkEffects.healFlat = (perkEffects.healFlat ?? 0) + campEffects.healFlat;
   const b = new BattleEngine(
     activeHeroDef,
     enemyDef,
@@ -72,7 +85,7 @@ function makeBattle(
     metrics,
     st.equippedItems,
     st.heroHp,
-    st.runBonuses,
+    combinedRunBonuses,
     perkEffects
   );
   b.start();

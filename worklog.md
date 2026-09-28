@@ -362,3 +362,51 @@ Unresolved / Next (подэтапы 7.5-7.7):
 - 7.6: Лагерь-мета-экран (3 вкладки: Герои/Улучшения/Настройки, покупки за accountGold — campUpgrades в store, нужен CampMetaScreen).
 - 7.7: Интеграция — мета-бонусы из лагеря (campUpgrades) применяются как бонусы к базовым статам героя в BattleEngine.
 - Рекомендация: следующий webDevReview — 7.5 (престиж) + 7.6 (Лагерь-мета-экран) + 7.7 (интеграция).
+
+---
+Task ID: stage-7.5-7.7
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 7: подэтапы 7.5 (престиж), 7.6 (Лагерь-мета-экран), 7.7 (интеграция)
+
+Work Log:
+ПОДЭТАП 7.5 — Престиж:
+- prestigeHero уже в GameState (сброс уровня 1, +1 престиж, до 5 раз). computePerkEffects применяет +2 урон + 10 HP за престиж.
+- HeroSelect + CampMetaScreen показывают престиж-звёзды (N★) и золотую рамку для prestiged героев.
+- Кнопка "Престиж" на вкладке Героев в CampMetaScreen (показывается при level >= 30 && prestige < 5). При нажатии — prestigeHero + toast "Престиж!" + звук levelUp.
+
+ПОДЭТАП 7.6 — Лагерь-мета-экран (CampMetaScreen):
+- Создан src/game/content/campUpgrades.ts: 4 улучшения (Сердце дракона +10HP 100з, Точильный камень +2урон 150з, Святая вода +1лечение 120з, Каменный щит +1старт.щит 200з). maxLevel 10/10/10/5. computeCampUpgradeEffects(campUpgrades) — суммирует эффекты по уровням.
+- Создан src/components/screens/CampMetaScreen.tsx: 3 вкладки (Герои/Улучшения/Настройки). 
+  * Герои: 6 героев с портретами, уровнями, XP-барами, кнопками Открыть/Престиж/МАКС★. accountGold в шапке.
+  * Улучшения: 4 покупки с ценой (растёт +50% за уровень), кнопка покупки, уровень/maxLevel, текущие бонусы внизу.
+  * Настройки: чекбоксы звук/музыка (setSettings), кнопка "Сбросить весь прогресс" (resetAll + localStorage.clear).
+- Экран "camp" добавлен в ScreenName + page.tsx. Кнопка "Лагерь" на карте (MapScreen).
+
+ПОДЭТАП 7.7 — Интеграция:
+- BattleScreen.makeBattle: computeCampUpgradeEffects(st.campUpgrades) → объединить с runBonuses (redDamageFlat, maxHpBonus, startShield) + healFlat добавлен к perkEffects. Передаётся в BattleEngine.
+- CampUpgrades применяются ко ВСЕМ героям (мета-бонусы).
+- Покупки за accountGold, сохраняются в localStorage (saveMeta).
+
+Верификация через agent-browser:
+- Лагерь-экран: "ЛАГЕРЬ" заголовок, 3 вкладки (Герои/Улучшения/Настройки).
+- Вкладка Герои: 6 героев с портретами, уровнями, XP-барами. Кнопки Престиж (для 30+), Открыть (закрытые).
+- Вкладка Улучшения: 4 покупки (100/150/120/200 зол.). Купил Сердце дракона: accountGold 500→400, campUpgrades={hp_boost:1}.
+- Вкладка Настройки: чекбоксы звук/музыка + "СБРОСИТЬ ВЕСЬ ПРОГРЕСС".
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+
+Stage Summary:
+- 7.5 (Престиж) ЗАВЕРШЁН: prestigeHero в store, кнопка на CampMetaScreen, +2 урон/+10 HP за престиж (computePerkEffects), звёзды и золотая рамка.
+- 7.6 (Лагерь-мета-экран) ЗАВЕРШЁН: 3 вкладки (Герои/Улучшения/Настройки), покупки за accountGold, настройки звука/музыки, сброс прогресса.
+- 7.7 (Интеграция) ЗАВЕРШЁН: campUpgrades применяются в BattleEngine через computeCampUpgradeEffects → runBonuses.
+- ВЕСЬ ЭТАП 7 ЗАВЕРШЁН: золото аккаунта (localStorage), 6 героев с механиками, уровни 1-30 + XP, перки каждые 5 уровней, престиж, Лагерь-мета-экран, интеграция.
+- Артефакты: скриншоты stage7-camp-heroes.png, stage7-camp-upgrades.png, stage7-camp-settings.png.
+
+Current Project Status:
+- Этапы 1-7 завершены. Полная мета-прогрессия: золото аккаунта, 6 героев, уровни 1-30, перки, престиж, Лагерь-мета-экран с покупками и настройками.
+- Статический экспорт: out/ = 1.4 MB, lint чистый, FPS 60.
+
+Unresolved / Next:
+- Этап 8: Яндекс SDK (LoadingAPI.ready, Player.setData сохранение меты, реклама, инап-покупки).
+- Этап 9: Полировка (VFX, анимации, шрифты).
+- Этап 10: Подготовка к публикации.
+- Рекомендация: следующий webDevReview — Этап 8 (Яндекс SDK).
