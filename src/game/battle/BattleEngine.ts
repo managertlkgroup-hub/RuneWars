@@ -68,6 +68,8 @@ export class BattleEngine {
   private vampireHealThisTurn = 0;
   // внутри-забежные бонусы
   private runBonuses: RunBonuses = {};
+  // некромант: счётчик убийств в забеге (+10% урона за каждое)
+  private necroKills: number = 0;
 
   constructor(
     heroDef: HeroDef,
@@ -156,14 +158,35 @@ export class BattleEngine {
         rage: GEM_BASE.rage[Math.min(g.length, GEM_BASE.rage.length - 1)],
       };
       const favored = g.color === hero.def.favoredColor ? hero.def.favoredBonus : 1.0;
+      const mechId = hero.def.mechanicId;
 
       if (g.color === 0) {
-        // красный — атака
+        // красный — атака (по умолчанию)
         let dmg = base.damage * lm * mult * favored;
+        // МАГ: красный = замедление врага (задержка атаки на 1 ход), без урона
+        if (mechId === "mage") {
+          // замедлить врага — отложить атаку на 1 ход
+          enemy.attackCountdown = Math.max(enemy.attackCountdown, 1);
+          this.emit({ type: "runeTriggered", rune: "ice" });
+          this.emit({ type: "enemyFrozen" });
+          dmg = 0;
+        }
+        // ЖРИЦА: красный = слабый урон (8→5, ×0.625)
+        if (mechId === "priestess") dmg *= 0.625;
+        // ПАЛАДИН: красный = атака + щит (+3)
+        if (mechId === "paladin") {
+          const sb = 3 * lm * mult;
+          hero.addShield(sb);
+          this.emit({ type: "playerShield", amount: sb });
+        }
         // бонусы предметов: оружие (+% урона, легендарный fury_strike)
         dmg *= hero.redDamageMultiplier();
         // внутри-забежный бонус: точильный камень (+flat к урону)
         if (this.runBonuses.redDamageFlat) dmg += this.runBonuses.redDamageFlat;
+        // уровень героя: +1 урон красным за уровень
+        dmg += (hero.level - 1);
+        // НЕКРОМАНТ: +10% урона за каждое убийство в забеге
+        if (mechId === "necromancer") dmg *= 1 + this.necroKills * 0.1;
         // руна Огонь: +50% на длине 3-4
         const fire = hero.getRune("fire");
         if (fire && fire.canUse() && g.length >= 3 && g.length <= 4) {
@@ -178,9 +201,9 @@ export class BattleEngine {
           hero.consumeRageStrike();
           rageStrike = true;
         }
-        // dodge (тень)
+        // dodge (тень) + РАЗБОЙНИК: синий даёт уклонение (обработано в синем)
         const dodged = enemy.hasDodge && Math.random() < 0.3;
-        if (!dodged) {
+        if (!dodged && dmg > 0) {
           const room = Math.max(0, CAPS.damagePerTurn - this.damageThisTurn);
           const applied = Math.min(dmg, room);
           if (applied > 0) {
@@ -210,13 +233,35 @@ export class BattleEngine {
           this.emit({ type: "playerDamage", amount: 0, crit: false, dodged: true });
         }
         if (enemy.isDead()) {
+          this.necroKills++;
           this.phase = "victory";
           this.hero.preserveShieldOnVictory();
           this.emit({ type: "victory" });
           return;
         }
       } else if (g.color === 1) {
-        // синий — щит
+        // синий — по умолчанию щит
+        // МАГ: синий = урон (8 вместо щита)
+        if (mechId === "mage") {
+          let dmg = 8 * lm * mult * favored;
+          dmg *= hero.redDamageMultiplier();
+          if (this.runBonuses.redDamageFlat) dmg += this.runBonuses.redDamageFlat;
+          dmg += (hero.level - 1);
+          const room = Math.max(0, CAPS.damagePerTurn - this.damageThisTurn);
+          const applied = Math.min(dmg, room);
+          if (applied > 0) { enemy.takeDamage(applied); this.damageThisTurn += applied; }
+          this.emit({ type: "playerDamage", amount: applied, crit: false, dodged: false });
+          if (enemy.isDead()) { this.necroKills++; this.phase = "victory"; this.hero.preserveShieldOnVictory(); this.emit({ type: "victory" }); return; }
+          continue;
+        }
+        // РАЗБОЙНИК: синий = уклонение (10% шанс уклонения от след атаки)
+        if (mechId === "rogue") {
+          // даёт временный «щит-уклонение» через addShield (упрощённо)
+          const dodge = Math.ceil(base.shield * 0.5 * lm * mult);
+          hero.addShield(dodge);
+          this.emit({ type: "playerShield", amount: dodge });
+          continue;
+        }
         let sh = base.shield * lm * mult * favored;
         // руна Лёд: синий 4+ замораживает врага
         const ice = hero.getRune("ice");
@@ -240,6 +285,12 @@ export class BattleEngine {
       } else if (g.color === 2) {
         // зелёный — лечение
         let hl = base.heal * lm * mult * favored;
+        // ЖРИЦА: зелёный = лечение + щит (комбо)
+        if (mechId === "priestess") {
+          const sb = Math.floor(base.shield * 0.5 * lm * mult);
+          hero.addShield(sb);
+          this.emit({ type: "playerShield", amount: sb });
+        }
         // руна Жизнь: двойное лечение + реген 3 хода
         const life = hero.getRune("life");
         if (life && life.canUse()) {
@@ -256,7 +307,20 @@ export class BattleEngine {
         }
         this.emit({ type: "playerHeal", amount: applied });
       } else if (g.color === 3) {
-        // жёлтый — ярость
+        // жёлтый — по умолчанию ярость
+        // РАЗБОЙНИК: жёлтый = крит-урон (×2 при 50% шансе)
+        if (mechId === "rogue") {
+          const crit = Math.random() < 0.5;
+          let dmg = base.damage * lm * mult * favored * (crit ? 2 : 1);
+          dmg *= hero.redDamageMultiplier();
+          dmg += (hero.level - 1);
+          const room = Math.max(0, CAPS.damagePerTurn - this.damageThisTurn);
+          const applied = Math.min(dmg, room);
+          if (applied > 0) { enemy.takeDamage(applied); this.damageThisTurn += applied; }
+          this.emit({ type: "playerDamage", amount: applied, crit, dodged: false });
+          if (enemy.isDead()) { this.necroKills++; this.phase = "victory"; this.hero.preserveShieldOnVictory(); this.emit({ type: "victory" }); return; }
+          continue;
+        }
         let rg = base.rage * lm * mult * favored;
         // руна Гнев: ярость ×2
         const wrath = hero.getRune("wrath");

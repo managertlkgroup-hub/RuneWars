@@ -20,7 +20,7 @@ import {
   GEM_COLOR_HEX,
   cascadeBonus,
 } from "@/game/content/balance";
-import { HEROES, getHero } from "@/game/content/heroes";
+import { HEROES, getHero, type HeroMechanicId } from "@/game/content/heroes";
 import { pickEnemyForFloor } from "@/game/content/enemies";
 import { RUNES, getRune, type RuneDef, type RuneId } from "@/game/content/runes";
 import type { RuneState } from "@/game/battle/Rune";
@@ -43,7 +43,7 @@ function makeBattle(
   equippedRunes: RuneId[],
   pending: PendingBattle | null
 ): BattleEngine {
-  const heroDef = getHero("warrior");
+  const heroDef = getHero("warrior"); // fallback
   let floor = 1;
   let isBoss = false;
   let dungeonId = 1;
@@ -59,10 +59,12 @@ function makeBattle(
   const enemyDef = pickEnemyForFloor(dungeonId, floor, isBoss);
   const runeDefs = equippedRunes.map((id) => getRune(id));
   const st = useGameStore.getState();
+  // активный герой из мета-прогрессии
+  const activeHeroDef = getHero(st.activeHero as HeroMechanicId);
   const b = new BattleEngine(
-    heroDef,
+    activeHeroDef,
     enemyDef,
-    1,
+    st.heroLevels[st.activeHero] ?? 1,
     runeDefs,
     metrics,
     st.equippedItems,
@@ -101,7 +103,7 @@ export default function BattleScreen() {
   const combo = useGameStore((s) => s.combo);
   const maxCombo = useGameStore((s) => s.maxCombo);
   const totalMatches = useGameStore((s) => s.totalMatches);
-  const gold = useGameStore((s) => s.gold);
+  const gold = useGameStore((s) => s.accountGold);
   const setDebugReady = useGameStore((s) => s.setDebugReady);
 
   const setPhaseSafe = useCallback((p: Phase) => {
@@ -356,7 +358,8 @@ export default function BattleScreen() {
     // возврат на карту
     const st = useGameStore.getState();
     if (st.pendingBattle?.isBoss) {
-      // новое подземелье — сброс внутри-забежных бонусов
+      // босс повержен: конвертировать dungeonGold → accountGold (1:1), новое подземелье
+      st.addGold(st.dungeonGold);
       const nextId = Math.min((st.pendingBattle.dungeonId || 1) + 1, 5);
       st.setDungeonId(nextId);
       st.setMap(generateDungeonMap(nextId));
@@ -369,6 +372,8 @@ export default function BattleScreen() {
   // Поражение / сброс → возврат на карту
   const handleQuickRestart = () => {
     const st = useGameStore.getState();
+    // при поражении: 50% dungeonGold сохраняется как accountGold
+    st.addGold(Math.floor(st.dungeonGold * 0.5));
     st.setPendingBattle(null);
     st.resetRun();
     st.setScreen("map");
@@ -410,7 +415,7 @@ export default function BattleScreen() {
           {/* Левая панель — герой + руны */}
           <div className="hidden lg:flex w-56 flex-col gap-2">
             <RunePanel glow>
-              <PanelTitle>{HEROES[0].title} — {HEROES[0].name}</PanelTitle>
+              <PanelTitle>{battle.hero.def.title} — {battle.hero.def.name} (ур.{battle.hero.level})</PanelTitle>
               <div className="p-3 space-y-1.5 font-body text-[11px]">
                 <Row label="HP" value={`${snap?.heroHp ?? 0}/${snap?.heroMaxHp ?? 0}`} />
                 <Row label="Щит" value={`${snap?.heroShield ?? 0}`} accent="text-rune-blue" />

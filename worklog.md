@@ -287,3 +287,38 @@ Unresolved / Next:
 - Этап 9-10: Полировка, публикация.
 - Рекомендация: следующий webDevReview — Этап 7 (Прокачка и герои + мета-прогрессия золота аккаунта).
 - Риск: heroHp/runBonuses/dungeonGold в памяти (не сохраняются между сессиями) — Яндекс SDK Player.setData в Этапе 8.
+
+---
+Task ID: stage-7.1-7.2
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 7: Прокачка и герои (подэтапы 7.1-7.2)
+
+Work Log:
+ПОДЭТАП 7.1 — Золото аккаунта (мета-валюта):
+- Создан src/game/core/storage.ts: localStorage персистентность. MetaState (accountGold, unlockedHeroes, activeHero, heroLevels, heroXp, heroPerks, heroPrestige, campUpgrades, pityCounter, ownedRunes, equippedRunes, settings). loadMeta/saveMeta/clearMeta. DEFAULT_META.
+- Обновлён src/game/core/GameState.ts: загрузка _meta из localStorage при создании store. Поля: accountGold, unlockedHeroes (["warrior"]), activeHero ("warrior"), heroLevels, heroXp, heroPerks, heroPrestige, campUpgrades, settings. Экшены: saveMeta (сохраняет всю мету), unlockHero (список accountGold, проверка стоимости), setActiveHero, addHeroXp (формула 100+N*50 XP, уровни 1-30, perksToChoose на уровнях %5===0), choosePerk, prestigeHero (сброс уровня + пассив), buyCampUpgrade, setSettings. addGold теперь добавляет в accountGold + saveMeta.
+- Обновлён src/components/screens/BattleScreen.tsx: victory (boss) → addGold(dungeonGold) (конвертация 1:1) перед resetDungeonRun. Defeat → addGold(floor(dungeonGold*0.5)) (50% сохраняется). gold display → accountGold.
+- Обновлён src/components/screens/MapScreen.tsx: шапка показывает accountGold (золотой) + dungeonGold (оранжевый) + HP героя.
+- Верификация: addGold(500) → localStorage сохранён, reload → accountGold=500 persists. unlockedHeroes=["warrior"] persists.
+
+ПОДЭТАП 7.2 — 6 героев с уникальными механиками:
+- Переписан src/game/content/heroes.ts: 6 героев с mechanicId, baseHp, unlockCost, mechanicDesc: Воин (100HP, 0), Маг (80HP, 500, синий=урон/красный=замедление), Жрица (90HP, 800, зелёный=лечение+щит/красный=слабый), Разбойник (90HP, 1200, жёлтый=крит×2/синий=уклонение), Паладин (120HP, 2000, красный=атака+щит), Некромант (75HP, 3000, +10% урона за убийство).
+- Создан src/components/screens/HeroSelectScreen.tsx: 6 карточек (2×3) с SVG-портретами. Открытые — "Выбрать"/"Активен", закрытые — замок + цена + "Открыть". Звук victory при открытии. accountGold в шапке. Уровни/престиж отображаются.
+- Обновлён src/game/battle/BattleEngine.ts: applyMatches использует hero.def.mechanicId для per-hero механик: МАГ (синий=урон 8, красный=замедление врага), ЖРИЦА (зелёный=лечение+щит, красный=×0.625), РАЗБОЙНИК (жёлтый=крит ×2 при 50%, синий=уклонение), ПАЛАДИН (красный=атака+3 щит), НЕКРОМАНТ (+10% урона за necroKills). Поле necroKills. Уровень героя: +1 урон красным за уровень. necroKills++ при убийстве.
+- Обновлён src/components/screens/BattleScreen.tsx: makeBattle использует activeHero (getHero(st.activeHero)) + st.heroLevels[activeHero] вместо хардкода "warrior". HUD показывает имя+уровень активного героя.
+- Добавлен экран "heroSelect" в ScreenName + page.tsx маршрутизация. Кнопка "Герои" на карте.
+- Верификация: HeroSelect — 6 карточек, Воин активен (золотая рамка), 5 закрыты с ценами. Открыл Мага за 500 → accountGold 500→0, unlocked=["warrior","mage"]. Выбрал Мага → activeHero="mage". Начал бой → heroName=Эльда, mechanicId=mage, maxHp=80 (хрупкий). Механика мага (синий=урон) реализована в BattleEngine.
+
+Stage Summary:
+- 7.1 (Золото аккаунта) ЗАВЕРШЁН: accountGold персистентен в localStorage, конвертация dungeonGold→accountGold при победе над боссом (1:1), 50% при поражении. Отображается в шапке.
+- 7.2 (6 героев) ЗАВЕРШЁН: 6 героев с уникальными mechanicId, HeroSelect экран (открытие/выбор), активный герой применяется в бою (имя, статы, механики). Механики реализованы в BattleEngine (маг синий=урон, жрица зелёный=щит+лечение, разбойник жёлтый=крит, паладин красный=щит, некромант +урон за убийство).
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+- Артефакты: скриншоты stage7-hero-select.png (6 карточек), stage7-mage-unlocked.png, stage7-mage-battle.png (маг в бою, 80 HP).
+
+Unresolved / Next (подэтапы 7.3-7.7):
+- 7.3: Уровни героя 1-30 — XP за убийства (10×floor враг, 30×floor элита, 100×floor босс, 50 этаж, 200 подземелье). Формула 100+N*50. XP-бар в бою и на карте. (addHeroXp уже реализован в store, нужна интеграция в BattleScreen victory + отображение XP-бара).
+- 7.4: Перки каждые 5 уровней — экран выбора 3 перков. (choosePerk уже в store, нужен PerkSelectScreen + контент перков).
+- 7.5: Престиж (после 30 уровня) — сброс + пассив. (prestigeHero в store, нужна кнопка + визуал).
+- 7.6: Магазин в Лагере (мета-экран) — 3 вкладки (Герои/Улучшения/Настройки), покупки за accountGold. (campUpgrades в store, нужен CampMetaScreen).
+- 7.7: Интеграция — мета-бонусы из лагеря применяются как бонусы к базовым статам героя.
+- Рекомендация: следующий webDevReview — 7.3 (XP/уровни) + 7.4 (перки).

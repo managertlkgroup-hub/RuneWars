@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { RuneId, RuneRarity } from "../content/runes";
 import type { DungeonMap, NodeType } from "../map/MapGenerator";
 import type { Item, ItemCategory, ChestType } from "../content/items";
+import { loadMeta, saveMeta, type MetaState } from "./storage";
 
 export type ScreenName =
   | "loading"
@@ -13,10 +14,11 @@ export type ScreenName =
   | "reward"
   | "equip"
   | "inventory"
+  | "heroSelect"
+  | "camp"
   | "nodeAction"
   | "victory"
-  | "defeat"
-  | "camp";
+  | "defeat";
 
 export interface OwnedRune {
   id: RuneId;
@@ -72,18 +74,29 @@ interface GameUIState {
   pendingDrop: Item | null;
 
   // внутри-забежные бонусы (сбрасываются при новом забеге)
-  dungeonGold: number; // золото подземелья (только в забеге)
-  heroHp: number; // переносимый HP между боями
-  heroMaxHp: number; // базовый макс HP героя (с бонусами)
+  dungeonGold: number;
+  heroHp: number;
+  heroMaxHp: number;
   runBonuses: {
-    redDamageFlat?: number; // точильный камень +1
-    maxHpBonus?: number; // сердце гиганта +10
-    regenPerTurn?: number; // регенерация +1/ход
-    startShield?: number; // зелье щита
-    startRage?: number; // зелье ярости
-    keys?: number; // ключи
+    redDamageFlat?: number;
+    maxHpBonus?: number;
+    regenPerTurn?: number;
+    startShield?: number;
+    startRage?: number;
+    keys?: number;
   };
   shopPurchases: Record<string, number>;
+
+  // мета-прогрессия (персистентная, localStorage)
+  accountGold: number; // золото аккаунта (между забегами)
+  unlockedHeroes: string[];
+  activeHero: string;
+  heroLevels: Record<string, number>;
+  heroXp: Record<string, number>;
+  heroPerks: Record<string, number[]>; // выбранные индексы перков по [heroId-level]
+  heroPrestige: Record<string, number>;
+  campUpgrades: Record<string, number>;
+  settings: { sound: boolean; music: boolean };
 
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
@@ -123,7 +136,20 @@ interface GameUIState {
   resetRun: () => void;
   resetDungeonRun: () => void;
   resetAll: () => void;
+
+  // мета-прогрессия (персистентная)
+  saveMeta: () => void;
+  unlockHero: (id: string, cost: number) => boolean;
+  setActiveHero: (id: string) => void;
+  addHeroXp: (heroId: string, xp: number) => { leveledUp: boolean; newLevel: number; perksToChoose: number[] };
+  choosePerk: (heroId: string, level: number, perkIdx: number) => void;
+  prestigeHero: (heroId: string) => void;
+  buyCampUpgrade: (id: string, cost: number) => boolean;
+  setSettings: (s: Partial<MetaState["settings"]>) => void;
 }
+
+// загрузка мета-прогрессии (один раз)
+const _meta = typeof window !== "undefined" ? loadMeta() : {};
 
 export const useGameStore = create<GameUIState>((set) => ({
   screen: "loading",
@@ -145,7 +171,7 @@ export const useGameStore = create<GameUIState>((set) => ({
   lastNodeReward: null,
   inventory: [],
   equippedItems: { weapon: null, armor: null, amulet: null },
-  pityCounter: 0,
+  pityCounter: _meta.pityCounter ?? 0,
   pendingChest: null,
   pendingDrop: null,
   dungeonGold: 0,
@@ -153,6 +179,16 @@ export const useGameStore = create<GameUIState>((set) => ({
   heroMaxHp: 100,
   runBonuses: {},
   shopPurchases: {},
+  // мета-прогрессия
+  accountGold: _meta.accountGold ?? 0,
+  unlockedHeroes: _meta.unlockedHeroes ?? ["warrior"],
+  activeHero: _meta.activeHero ?? "warrior",
+  heroLevels: _meta.heroLevels ?? { warrior: 1 },
+  heroXp: _meta.heroXp ?? { warrior: 0 },
+  heroPerks: _meta.heroPerks ?? {},
+  heroPrestige: _meta.heroPrestige ?? {},
+  campUpgrades: _meta.campUpgrades ?? {},
+  settings: _meta.settings ?? { sound: true, music: true },
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),
@@ -163,7 +199,10 @@ export const useGameStore = create<GameUIState>((set) => ({
   setHint: (hint) => set({ hint }),
   setDebugReady: (debugReady) => set({ debugReady }),
 
-  addGold: (gold) => set((s) => ({ gold: s.gold + gold })),
+  addGold: (gold) => {
+    set((s) => ({ accountGold: s.accountGold + gold }));
+    useGameStore.getState().saveMeta();
+  },
   addOwnedRune: (r) =>
     set((s) => {
       const existing = s.ownedRunes.find((x) => x.id === r.id);
@@ -269,5 +308,127 @@ export const useGameStore = create<GameUIState>((set) => ({
       pityCounter: 0,
       pendingChest: null,
       pendingDrop: null,
+      accountGold: 0,
+      unlockedHeroes: ["warrior"],
+      activeHero: "warrior",
+      heroLevels: { warrior: 1 },
+      heroXp: { warrior: 0 },
+      heroPerks: {},
+      heroPrestige: {},
+      campUpgrades: {},
+      settings: { sound: true, music: true },
     }),
+
+  // --- мета-прогрессия ---
+
+  saveMeta: () => {
+    const s = useGameStore.getState();
+    saveMeta({
+      accountGold: s.accountGold,
+      unlockedHeroes: s.unlockedHeroes,
+      activeHero: s.activeHero,
+      heroLevels: s.heroLevels,
+      heroXp: s.heroXp,
+      heroPerks: s.heroPerks,
+      heroPrestige: s.heroPrestige,
+      campUpgrades: s.campUpgrades,
+      pityCounter: s.pityCounter,
+      ownedRunes: s.ownedRunes,
+      equippedRunes: s.equippedRunes,
+      settings: s.settings,
+    });
+  },
+
+  unlockHero: (id, cost) => {
+    let ok = false;
+    set((s) => {
+      if (s.unlockedHeroes.includes(id)) return {};
+      if (s.accountGold < cost) return {};
+      ok = true;
+      return {
+        accountGold: s.accountGold - cost,
+        unlockedHeroes: [...s.unlockedHeroes, id],
+        heroLevels: { ...s.heroLevels, [id]: s.heroLevels[id] ?? 1 },
+        heroXp: { ...s.heroXp, [id]: s.heroXp[id] ?? 0 },
+      };
+    });
+    if (ok) useGameStore.getState().saveMeta();
+    return ok;
+  },
+
+  setActiveHero: (id) => {
+    set({ activeHero: id });
+    useGameStore.getState().saveMeta();
+  },
+
+  addHeroXp: (heroId, xp) => {
+    const s = useGameStore.getState();
+    let level = s.heroLevels[heroId] ?? 1;
+    let curXp = s.heroXp[heroId] ?? 0;
+    curXp += xp;
+    const perksToChoose: number[] = [];
+    let leveledUp = false;
+    // формула: для уровня N нужно 100 + N*50 XP
+    while (level < 30) {
+      const need = 100 + level * 50;
+      if (curXp >= need) {
+        curXp -= need;
+        level++;
+        leveledUp = true;
+        if (level % 5 === 0) perksToChoose.push(level);
+      } else break;
+    }
+    if (leveledUp) {
+      set({
+        heroLevels: { ...s.heroLevels, [heroId]: level },
+        heroXp: { ...s.heroXp, [heroId]: curXp },
+      });
+      useGameStore.getState().saveMeta();
+    } else {
+      set({ heroXp: { ...s.heroXp, [heroId]: curXp } });
+    }
+    return { leveledUp, newLevel: level, perksToChoose };
+  },
+
+  choosePerk: (heroId, level, perkIdx) => {
+    const s = useGameStore.getState();
+    const key = `${heroId}-${level}`;
+    const existing = s.heroPerks[key] ?? [];
+    if (existing.includes(perkIdx)) return;
+    set({ heroPerks: { ...s.heroPerks, [key]: [...existing, perkIdx] } });
+    useGameStore.getState().saveMeta();
+  },
+
+  prestigeHero: (heroId) => {
+    const s = useGameStore.getState();
+    const level = s.heroLevels[heroId] ?? 1;
+    if (level < 30) return;
+    const prestige = s.heroPrestige[heroId] ?? 0;
+    if (prestige >= 5) return;
+    set({
+      heroLevels: { ...s.heroLevels, [heroId]: 1 },
+      heroXp: { ...s.heroXp, [heroId]: 0 },
+      heroPrestige: { ...s.heroPrestige, [heroId]: prestige + 1 },
+    });
+    useGameStore.getState().saveMeta();
+  },
+
+  buyCampUpgrade: (id, cost) => {
+    let ok = false;
+    set((s) => {
+      if (s.accountGold < cost) return {};
+      ok = true;
+      return {
+        accountGold: s.accountGold - cost,
+        campUpgrades: { ...s.campUpgrades, [id]: (s.campUpgrades[id] ?? 0) + 1 },
+      };
+    });
+    if (ok) useGameStore.getState().saveMeta();
+    return ok;
+  },
+
+  setSettings: (ns) => {
+    set((s) => ({ settings: { ...s.settings, ...ns } }));
+    useGameStore.getState().saveMeta();
+  },
 }));

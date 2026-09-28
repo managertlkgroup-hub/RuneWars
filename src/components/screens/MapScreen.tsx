@@ -58,7 +58,7 @@ export default function MapScreen() {
   const setLastNodeReward = useGameStore((s) => s.setLastNodeReward);
   const addGold = useGameStore((s) => s.addGold);
   const equippedRunes = useGameStore((s) => s.equippedRunes);
-  const gold = useGameStore((s) => s.gold);
+  const accountGold = useGameStore((s) => s.accountGold);
   const dungeonGold = useGameStore((s) => s.dungeonGold);
   const heroHp = useGameStore((s) => s.heroHp);
   const heroMaxHp = useGameStore((s) => s.heroMaxHp);
@@ -185,12 +185,12 @@ export default function MapScreen() {
             {dungeon.name}
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-pixel text-[9px] text-rune-gold-light flex items-center gap-1">
+            <span className="font-pixel text-[9px] text-rune-gold-light flex items-center gap-1" title="Золото аккаунта">
               <svg width="12" height="12" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#c9a227" stroke="#1a0a1e" strokeWidth="3" /></svg>
-              {gold}
+              {accountGold}
             </span>
             <span className="font-pixel text-[9px] text-rune-warm flex items-center gap-1" title="Золото подземелья">
-              <svg width="10" height="10" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#c9a227" stroke="#1a0a1e" strokeWidth="3" /></svg>
+              <svg width="10" height="10" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#f4a261" stroke="#1a0a1e" strokeWidth="3" /></svg>
               {dungeonGold}
             </span>
             <span className="font-pixel text-[8px] text-rune-red" title="HP героя (переносимый)">
@@ -335,6 +335,13 @@ export default function MapScreen() {
               <span className="font-pixel text-[8px] text-rune-muted">
                 Руны: {equippedRunes.length}/3
               </span>
+              <RuneButton
+                variant="ghost"
+                onClick={() => setScreen("heroSelect")}
+                className="text-[9px] py-1 px-2"
+              >
+                Герои
+              </RuneButton>
               <RuneButton
                 variant="ghost"
                 onClick={() => setScreen("inventory")}
