@@ -14,6 +14,7 @@ import { RuneIcon } from "@/components/icons/RuneIcons";
 import RewardScreen, { generateRewards, type RewardOption } from "@/components/screens/RewardScreen";
 import { generateDungeonMap } from "@/game/map/MapGenerator";
 import { dropBossLoot, dropEliteLoot } from "@/game/content/items";
+import { computePerkEffects } from "@/game/content/perks";
 import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
@@ -61,6 +62,8 @@ function makeBattle(
   const st = useGameStore.getState();
   // активный герой из мета-прогрессии
   const activeHeroDef = getHero(st.activeHero as HeroMechanicId);
+  // эффекты перков
+  const perkEffects = computePerkEffects(st.activeHero, st.heroPerks, st.heroPrestige);
   const b = new BattleEngine(
     activeHeroDef,
     enemyDef,
@@ -69,7 +72,8 @@ function makeBattle(
     metrics,
     st.equippedItems,
     st.heroHp,
-    st.runBonuses
+    st.runBonuses,
+    perkEffects
   );
   b.start();
   return b;
@@ -365,6 +369,21 @@ export default function BattleScreen() {
       st.setMap(generateDungeonMap(nextId));
       st.resetDungeonRun();
     }
+    // XP за убийство: враг 10×floor, элита 30×floor, босс 100×floor
+    const pb = st.pendingBattle;
+    if (pb) {
+      const floor = pb.floor || 1;
+      let xp = 10 * floor;
+      if (pb.nodeType === "elite") xp = 30 * floor;
+      if (pb.isBoss) xp = 100 * floor;
+      const xpResult = st.addHeroXp(st.activeHero, xp);
+      if (xpResult.perksToChoose.length > 0) {
+        st.setPendingPerkLevel(xpResult.perksToChoose[0]);
+        st.setPendingBattle(null);
+        st.setScreen("perkSelect");
+        return;
+      }
+    }
     st.setPendingBattle(null);
     st.setScreen("map");
   };
@@ -421,6 +440,7 @@ export default function BattleScreen() {
                 <Row label="Щит" value={`${snap?.heroShield ?? 0}`} accent="text-rune-blue" />
                 <Row label="Ярость" value={`${snap?.heroRage ?? 0}/60`} accent="text-rune-yellow" />
                 <Row label="Ход" value={`${snap?.turn ?? 0}`} />
+                <XpBar heroId={useGameStore.getState().activeHero} />
                 <Row
                   label="Атака врага"
                   value={snap?.enemyFrozen ? "ЗАМОРОЖЕН" : `через ${snap?.enemyAttackIn ?? 0}`}
@@ -601,6 +621,24 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
     <div className="flex items-center justify-between">
       <span className="text-rune-muted">{label}</span>
       <span className={`font-pixel text-[10px] ${accent ?? "text-rune-text"}`}>{value}</span>
+    </div>
+  );
+}
+
+function XpBar({ heroId }: { heroId: string }) {
+  const level = useGameStore((s) => s.heroLevels[heroId] ?? 1);
+  const xp = useGameStore((s) => s.heroXp[heroId] ?? 0);
+  const need = 100 + level * 50;
+  const pct = Math.min(100, (xp / need) * 100);
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between">
+        <span className="text-rune-muted">XP</span>
+        <span className="font-pixel text-[8px] text-rune-green">{xp}/{need}</span>
+      </div>
+      <div className="h-1.5 w-full rounded-sm bg-[#0a0718] overflow-hidden border border-[#3a2a5a]">
+        <div className="h-full bg-gradient-to-r from-rune-green to-rune-warm" style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }

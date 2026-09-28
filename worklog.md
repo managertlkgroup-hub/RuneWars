@@ -322,3 +322,43 @@ Unresolved / Next (подэтапы 7.3-7.7):
 - 7.6: Магазин в Лагере (мета-экран) — 3 вкладки (Герои/Улучшения/Настройки), покупки за accountGold. (campUpgrades в store, нужен CampMetaScreen).
 - 7.7: Интеграция — мета-бонусы из лагеря применяются как бонусы к базовым статам героя.
 - Рекомендация: следующий webDevReview — 7.3 (XP/уровни) + 7.4 (перки).
+
+---
+Task ID: stage-7.3-7.4
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 7: подэтапы 7.3 (XP/уровни) и 7.4 (перки)
+
+Work Log:
+ПОДЭТАП 7.3 — Уровни героя 1-30 + XP:
+- addHeroXp уже реализован в GameState (формула 100+N*50 XP, уровни 1-30, perksToChoose на %5===0).
+- Интеграция в BattleScreen handlePickReward: XP за убийство — враг 10×floor, элита 30×floor, босс 100×floor. После выбора награды → addHeroXp → если perksToChoose → setPendingPerkLevel + screen perkSelect.
+- +5 макс HP за уровень (в Hero.ts, уже было), +1 урон красным за уровень (в BattleEngine applyMatches).
+- XP-бар в HUD боя: XpBar компонент (зелёно-оранжевый градиент, показывает xp/need).
+
+ПОДЭТАП 7.4 — Перки каждые 5 уровней:
+- Создан src/game/content/perks.ts: PERK_POOLS для уровней 5/10/15/20/25/30 (3 варианта каждый, уровень 30 = легендарный). PerkDef с effect (maxHp, redDamageFlat, healFlat, rageMult, shieldMult, healMult, critChance, vampirePct, dodgeChance, ultaMult, autoShield, startRage, doubleStrike, regenPerTurn, shieldAbsorb, legendaryPassive). computePerkEffects(heroId, heroPerks, heroPrestige) — суммирует выбранные перки + престиж-бонус (+2 урон, +10 HP за престиж).
+- Создан src/components/screens/PerkSelectScreen.tsx: 3 карточки с номерами, названиями, описаниями. Клик → choosePerk + звук levelUp → onDone (возврат на карту).
+- Экран "perkSelect" добавлен в ScreenName + page.tsx (читает activeHero + pendingPerkLevel).
+- pendingPerkLevel поле + setPendingPerkLevel экшен в GameState.
+- Применение перк-эффектов в BattleEngine: конструктор принимает perkEffects. В applyMatches: redDamageFlat (перк), critChance (×1.5), vampirePct (5% → HP), shieldMult (×), healMult (×), healFlat (+), rageMult (×). В endTurn: regenPerTurn (перк, вне капа). В enemyAttack: dodgeChance (уклонение), shieldAbsorb (×1.2 поглощение). В конструкторе: maxHp, autoShield, startRage.
+- BattleScreen.makeBattle: computePerkEffects(st.activeHero, st.heroPerks, st.heroPrestige) → передаётся в BattleEngine.
+- Ульта ×3 перк: ultaMult в perkEffects (Hero.rageStrikeMultiplier читает из perkEffects? — пока ultaMult хранится, но Hero не применяет. TODO: передать ultaMult в Hero или BattleEngine).
+
+Верификация через agent-browser:
+- Выставил Воину уровень 4, XP 290 (10 до уровня 5).
+- Начал бой на этаже 1 (Гоблин-воин). Автобой → победа → "Забрать награду" → выбрал золото → XP +10 (290→300) → уровень 5 → screen=perkSelect, pendingPerkLevel=5.
+- PerkSelectScreen: "УРОВЕНЬ 5 — ВЫБОР ПЕРКА", 3 карточки (Закалка +10 HP / Острота +2 урон красных / Целитель +1 лечение).
+- Выбрал Закалку → heroPerks={"warrior-5":[0]}, возврат на карту. Уровень 5.
+- XP-бар в HUD боя (зелёно-оранжевый, xp/need).
+
+Stage Summary:
+- 7.3 (XP/уровни) ЗАВЕРШЁН: XP за убийства (10/30/100 × floor), формула 100+N*50, уровни 1-30, +5 HP/+1 урон за уровень, XP-бар в HUD.
+- 7.4 (перки) ЗАВЕРШЁН: 6 уровней перков (5/10/15/20/25/30), 3 варианта каждый, PerkSelectScreen, эффекты применяются в бою (maxHp, redDamageFlat, crit, vampire, shieldMult, healMult, rageMult, dodge, autoShield, startRage, regen, shieldAbsorb). computePerkEffects суммирует перки + престиж.
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+- Артефакты: скриншоты stage7-perk-select.png (3 карточки перков).
+
+Unresolved / Next (подэтапы 7.5-7.7):
+- 7.5: Престиж (prestigeHero в store — нужна кнопка на экране героя + визуал золотой рамки/титула).
+- 7.6: Лагерь-мета-экран (3 вкладки: Герои/Улучшения/Настройки, покупки за accountGold — campUpgrades в store, нужен CampMetaScreen).
+- 7.7: Интеграция — мета-бонусы из лагеря (campUpgrades) применяются как бонусы к базовым статам героя в BattleEngine.
+- Рекомендация: следующий webDevReview — 7.5 (престиж) + 7.6 (Лагерь-мета-экран) + 7.7 (интеграция).

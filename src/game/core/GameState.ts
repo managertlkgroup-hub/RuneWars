@@ -15,6 +15,7 @@ export type ScreenName =
   | "equip"
   | "inventory"
   | "heroSelect"
+  | "perkSelect"
   | "camp"
   | "nodeAction"
   | "victory"
@@ -72,6 +73,7 @@ interface GameUIState {
   pityCounter: number;
   pendingChest: { chestType: ChestType; nodeId: number } | null;
   pendingDrop: Item | null;
+  pendingPerkLevel: number | null; // уровень, на котором нужно выбрать перк
 
   // внутри-забежные бонусы (сбрасываются при новом забеге)
   dungeonGold: number;
@@ -124,6 +126,7 @@ interface GameUIState {
   setPityCounter: (n: number) => void;
   setPendingChest: (c: GameUIState["pendingChest"]) => void;
   setPendingDrop: (d: Item | null) => void;
+  setPendingPerkLevel: (l: number | null) => void;
 
   addDungeonGold: (n: number) => void;
   setDungeonGold: (n: number) => void;
@@ -174,6 +177,7 @@ export const useGameStore = create<GameUIState>((set) => ({
   pityCounter: _meta.pityCounter ?? 0,
   pendingChest: null,
   pendingDrop: null,
+  pendingPerkLevel: null,
   dungeonGold: 0,
   heroHp: 100,
   heroMaxHp: 100,
@@ -253,6 +257,7 @@ export const useGameStore = create<GameUIState>((set) => ({
   setPityCounter: (pityCounter) => set({ pityCounter }),
   setPendingChest: (pendingChest) => set({ pendingChest }),
   setPendingDrop: (pendingDrop) => set({ pendingDrop }),
+  setPendingPerkLevel: (pendingPerkLevel) => set({ pendingPerkLevel }),
 
   addDungeonGold: (n) => set((s) => ({ dungeonGold: Math.max(0, s.dungeonGold + n) })),
   setDungeonGold: (dungeonGold) => set({ dungeonGold: Math.max(0, dungeonGold) }),

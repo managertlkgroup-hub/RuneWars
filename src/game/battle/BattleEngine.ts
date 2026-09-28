@@ -9,6 +9,7 @@ import type { HeroDef } from "../content/heroes";
 import type { EnemyDef } from "../content/enemies";
 import type { RuneDef, RuneId } from "../content/runes";
 import type { Item } from "../content/items";
+import type { PerkDef } from "../content/perks";
 
 export interface RunBonuses {
   redDamageFlat?: number;
@@ -17,6 +18,8 @@ export interface RunBonuses {
   startShield?: number;
   startRage?: number;
 }
+
+export type PerkEffects = PerkDef["effect"];
 
 export type BattleEvent =
   | { type: "matchVfx"; groups: MatchGroup[]; cascadeLevel: number }
@@ -68,6 +71,8 @@ export class BattleEngine {
   private vampireHealThisTurn = 0;
   // внутри-забежные бонусы
   private runBonuses: RunBonuses = {};
+  // эффекты перков (мета-прогрессия)
+  private perkEffects: PerkEffects = {};
   // некромант: счётчик убийств в забеге (+10% урона за каждое)
   private necroKills: number = 0;
 
@@ -79,11 +84,15 @@ export class BattleEngine {
     metrics?: BoardEngine["metrics"],
     equippedItems?: { weapon: Item | null; armor: Item | null; amulet: Item | null },
     startHp?: number,
-    runBonuses?: RunBonuses
+    runBonuses?: RunBonuses,
+    perkEffects?: PerkEffects
   ) {
     this.hero = new Hero(heroDef, heroLevel);
     this.hero.equipRunes(equippedRunes);
     if (equippedItems) this.hero.equipItems(equippedItems);
+    this.perkEffects = perkEffects ?? {};
+    // перк-эффекты: +макс HP
+    if (this.perkEffects.maxHp) this.hero.maxHp += this.perkEffects.maxHp;
     // внутри-забежные бонусы: +макс HP
     if (runBonuses?.maxHpBonus) {
       this.hero.maxHp += runBonuses.maxHpBonus;
@@ -93,12 +102,15 @@ export class BattleEngine {
       this.hero.hp = Math.min(this.hero.maxHp, startHp);
     }
     this.hero.applyCarriedShield();
+    // перк-эффекты: авто-щит + старт ярость
+    if (this.perkEffects.autoShield) this.hero.shield = Math.min(this.hero.maxShield, this.hero.shield + this.perkEffects.autoShield);
+    if (this.perkEffects.startRage) this.hero.rage = Math.min(this.hero.maxRage, this.hero.rage + this.perkEffects.startRage);
     // стартовые щит/ярость от зелий
     if (runBonuses?.startShield) {
-      this.hero.shield = Math.min(this.hero.maxShield, runBonuses.startShield);
+      this.hero.shield = Math.min(this.hero.maxShield, this.hero.shield + runBonuses.startShield);
     }
     if (runBonuses?.startRage) {
-      this.hero.rage = Math.min(this.hero.maxRage, runBonuses.startRage);
+      this.hero.rage = Math.min(this.hero.maxRage, this.hero.rage + runBonuses.startRage);
     }
     this.runBonuses = runBonuses ?? {};
     this.enemy = new Enemy(enemyDef);
@@ -183,8 +195,15 @@ export class BattleEngine {
         dmg *= hero.redDamageMultiplier();
         // внутри-забежный бонус: точильный камень (+flat к урону)
         if (this.runBonuses.redDamageFlat) dmg += this.runBonuses.redDamageFlat;
+        // перк-бонус: +flat к урону красных
+        if (this.perkEffects.redDamageFlat) dmg += this.perkEffects.redDamageFlat;
         // уровень героя: +1 урон красным за уровень
         dmg += (hero.level - 1);
+        // перк: шанс крита красных (×1.5)
+        if (this.perkEffects.critChance && Math.random() < this.perkEffects.critChance) {
+          dmg *= 1.5;
+          rageStrike = rageStrike || true; // отметить как крит для VFX
+        }
         // НЕКРОМАНТ: +10% урона за каждое убийство в забеге
         if (mechId === "necromancer") dmg *= 1 + this.necroKills * 0.1;
         // руна Огонь: +50% на длине 3-4
@@ -216,6 +235,14 @@ export class BattleEngine {
               if (vHeal > 0) {
                 const healed = hero.heal(vHeal);
                 this.vampireHealThisTurn += healed;
+                if (healed > 0) this.emit({ type: "playerHeal", amount: healed });
+              }
+            }
+            // перк-вампиризм: 5% урона → HP (вне капа, max 3/ход)
+            if (this.perkEffects.vampirePct && applied > 0) {
+              const vHeal = Math.min(3, applied * this.perkEffects.vampirePct);
+              if (vHeal > 0) {
+                const healed = hero.heal(vHeal);
                 if (healed > 0) this.emit({ type: "playerHeal", amount: healed });
               }
             }
@@ -263,6 +290,8 @@ export class BattleEngine {
           continue;
         }
         let sh = base.shield * lm * mult * favored;
+        // перк: множитель щита
+        if (this.perkEffects.shieldMult) sh *= 1 + this.perkEffects.shieldMult;
         // руна Лёд: синий 4+ замораживает врага
         const ice = hero.getRune("ice");
         if (ice && ice.canUse() && g.length >= 4 && !enemy.frozen) {
@@ -285,6 +314,9 @@ export class BattleEngine {
       } else if (g.color === 2) {
         // зелёный — лечение
         let hl = base.heal * lm * mult * favored;
+        // перк: множитель лечения + flat
+        if (this.perkEffects.healMult) hl *= 1 + this.perkEffects.healMult;
+        if (this.perkEffects.healFlat) hl += this.perkEffects.healFlat;
         // ЖРИЦА: зелёный = лечение + щит (комбо)
         if (mechId === "priestess") {
           const sb = Math.floor(base.shield * 0.5 * lm * mult);
@@ -322,6 +354,8 @@ export class BattleEngine {
           continue;
         }
         let rg = base.rage * lm * mult * favored;
+        // перк: множитель ярости
+        if (this.perkEffects.rageMult) rg *= 1 + this.perkEffects.rageMult;
         // руна Гнев: ярость ×2
         const wrath = hero.getRune("wrath");
         if (wrath && wrath.canUse()) {
@@ -418,6 +452,11 @@ export class BattleEngine {
       const h = this.hero.heal(this.runBonuses.regenPerTurn!);
       if (h > 0) this.emit({ type: "playerHeal", amount: h });
     }
+    // перк-регенерация (+HP/ход, вне капа)
+    if ((this.perkEffects.regenPerTurn ?? 0) > 0) {
+      const h = this.hero.heal(this.perkEffects.regenPerTurn!);
+      if (h > 0) this.emit({ type: "playerHeal", amount: h });
+    }
 
     // тик кулдаунов героя (руны + ярость)
     this.hero.tickCooldowns();
@@ -461,13 +500,23 @@ export class BattleEngine {
     const brokeShield = enemy.hasShieldbreak;
     let shieldAbsorbed = 0;
     let hpDamage = 0;
+    // перк-уклонение: шанс полностью уклониться
+    if (this.perkEffects.dodgeChance && Math.random() < this.perkEffects.dodgeChance) {
+      this.emit({ type: "enemyAttack", amount: atk, shieldAbsorbed: 0, hpDamage: 0, brokeShield: false });
+      // уклонение — emit игрок промах
+      this.emit({ type: "playerDamage", amount: 0, crit: false, dodged: true });
+      return;
+    }
     if (brokeShield) {
       hpDamage = atk;
       hero.hp = Math.max(0, hero.hp - atk);
     } else {
       const beforeShield = hero.shield;
       const beforeHp = hero.hp;
-      hero.takeDamage(atk);
+      // перк-поглощение: щит эффективнее
+      const absorbMult = 1 + (this.perkEffects.shieldAbsorb ?? 0);
+      const effectiveAtk = atk / absorbMult;
+      hero.takeDamage(Math.ceil(effectiveAtk));
       shieldAbsorbed = beforeShield - hero.shield;
       hpDamage = beforeHp - hero.hp;
     }

@@ -6,6 +6,7 @@ import MapScreen from "@/components/screens/MapScreen";
 import EquipScreen from "@/components/screens/EquipScreen";
 import InventoryScreen from "@/components/screens/InventoryScreen";
 import HeroSelectScreen from "@/components/screens/HeroSelectScreen";
+import PerkSelectScreen from "@/components/screens/PerkSelectScreen";
 import { useGameStore } from "@/game/core/GameState";
 
 export default function Home() {
@@ -69,6 +70,13 @@ export default function Home() {
         <div className="w-full h-full relative">
           <HeroSelectScreen onClose={() => setScreen("map")} />
         </div>
+      )}
+      {screen === "perkSelect" && (
+        <PerkSelectScreen
+          heroId={useGameStore.getState().activeHero}
+          level={useGameStore.getState().pendingPerkLevel ?? 5}
+          onDone={() => setScreen("map")}
+        />
       )}
       {(screen === "reward" || screen === "victory" || screen === "defeat" || screen === "nodeAction") && (
         // эти экраны рендерятся как overlay внутри BattleScreen/MapScreen; fallback на map
