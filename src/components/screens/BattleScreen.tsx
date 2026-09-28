@@ -313,6 +313,7 @@ export default function BattleScreen() {
     onRender: (ctx, w, h, dt) => {
       if (!boardRendererRef.current) {
         boardRendererRef.current = new BoardRenderer(ctx, battle.board, particles);
+        boardRendererRef.current.dungeonId = pendingBattle?.dungeonId ?? 1;
       }
       if (!charRendererRef.current) {
         charRendererRef.current = new CharacterRenderer(battle, particles);

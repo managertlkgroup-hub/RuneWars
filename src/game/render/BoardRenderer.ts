@@ -10,6 +10,7 @@ export class BoardRenderer {
   ctx: CanvasRenderingContext2D | null = null;
   engine: BoardEngine;
   particles: ParticlePool;
+  dungeonId: number = 1;
   bgGradient: CanvasGradient | null = null;
   shake = 0;
   shakeIntensity = 0;
@@ -66,7 +67,7 @@ export class BoardRenderer {
   private renderBackground(canvasW: number, canvasH: number, dt: number) {
     const ctx = this.ctx;
     // PNG-фон подземелья (fallback: градиент)
-    const bg = AssetLoader.getBackground(1);
+    const bg = AssetLoader.getBackground(this.dungeonId);
     if (bg) {
       ctx.drawImage(bg, 0, 0, canvasW, canvasH);
     } else {
