@@ -19,7 +19,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "potion_heal",
     name: "Зелье лечения",
     description: "+30 HP немедленно (вне боя, без капа).",
-    basePrice: 30,
+    basePrice: 20,
     icon: "heart",
     effect: { kind: "heal", amount: 30 },
   },
@@ -27,7 +27,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "potion_shield",
     name: "Зелье щита",
     description: "+20 щит в начале следующего боя (кап 50).",
-    basePrice: 40,
+    basePrice: 30,
     icon: "shield",
     effect: { kind: "shield", amount: 20 },
   },
@@ -35,7 +35,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "potion_rage",
     name: "Зелье ярости",
     description: "+40 ярости в начале следующего боя (кап 60).",
-    basePrice: 35,
+    basePrice: 25,
     icon: "rage",
     effect: { kind: "rage", amount: 40 },
   },
@@ -43,7 +43,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "key",
     name: "Ключ",
     description: "Открывает сундук без засады.",
-    basePrice: 50,
+    basePrice: 35,
     icon: "key",
     effect: { kind: "key", amount: 1 },
   },
@@ -51,7 +51,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "rune",
     name: "Случайная руна",
     description: "Случайная руна (только если есть слот < 3).",
-    basePrice: 100,
+    basePrice: 80,
     icon: "rune",
     effect: { kind: "rune" },
   },
@@ -59,7 +59,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "whetstone",
     name: "Точильный камень",
     description: "+1 к урону красных матчей до конца забега.",
-    basePrice: 45,
+    basePrice: 40,
     icon: "whetstone",
     effect: { kind: "redDamage", amount: 1 },
   },
@@ -67,7 +67,7 @@ export const SHOP_POOL: ShopItemDef[] = [
     id: "giant_heart",
     name: "Сердце гиганта",
     description: "+10 к макс HP и лечение на 10.",
-    basePrice: 40,
+    basePrice: 45,
     icon: "heart",
     effect: { kind: "maxHp", amount: 10 },
   },
@@ -89,8 +89,8 @@ export interface ShopOffer {
   sold: boolean;
 }
 
-const MARKUP = 1.2; // +20%
-const DISCOUNT = 0.8; // -20%
+const MARKUP = 1.0; // без наценки (цены уже сбалансированы)
+const DISCOUNT = 0.8; // -20% при скидке
 const DISCOUNT_CHANCE = 0.1; // 10% шанс скидки на одну позицию
 const MAX_SAME_PER_RUN = 2;
 

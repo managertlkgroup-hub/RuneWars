@@ -125,7 +125,7 @@ export default function InventoryScreen({ onClose }: { onClose: () => void }) {
                 onContextMenu={(e) => e.preventDefault()}
                 onMouseEnter={() => setHovered(it)}
                 onMouseLeave={() => setHovered((h) => (h?.uid === it.uid ? null : h))}
-                className="relative flex flex-col items-center gap-0.5 p-1.5 rounded-lg border-2 bg-[#0a0718]/80 transition-all hover:scale-105"
+                className="relative flex flex-col items-center gap-0.5 p-1.5 rounded-lg border-2 bg-[#0a0718]/80"
                 style={{
                   borderColor: rd.color,
                   boxShadow: isEquipped ? `0 0 10px ${rd.glow}` : "none",

@@ -105,6 +105,7 @@ export default function BattleScreen() {
   const [phase, setPhase] = useState<Phase>("fighting");
   const [rewards, setRewards] = useState<RewardOption[]>([]);
   const [, forceTick] = useState(0);
+  const [rewardedUsed, setRewardedUsed] = useState(false);
 
   const boardRendererRef = useRef<BoardRenderer | null>(null);
   const charRendererRef = useRef<CharacterRenderer | null>(null);
@@ -237,7 +238,11 @@ export default function BattleScreen() {
         const st = useGameStore.getState();
         st.setHeroHp(b.hero.hp);
         st.setHeroMaxHp(b.hero.maxHp);
-        const goldReward = 10 + (st.pendingBattle?.floor ?? 1) * 5;
+        // награда dungeonGold: 3 + floor*2 (элита ×2, босс ×3 + 30)
+        const pb2 = st.pendingBattle;
+        let goldReward = 3 + (pb2?.floor ?? 1) * 2;
+        if (pb2?.nodeType === "elite") goldReward *= 2;
+        if (pb2?.isBoss) goldReward = goldReward * 3 + 30;
         st.addDungeonGold(goldReward);
         const cx = 968;
         const cy = 300;
@@ -377,8 +382,8 @@ export default function BattleScreen() {
     // возврат на карту
     const st = useGameStore.getState();
     if (st.pendingBattle?.isBoss) {
-      // босс повержен: конвертировать dungeonGold → accountGold (1:1), новое подземелье
-      st.addGold(st.dungeonGold);
+      // босс повержен: 50% dungeonGold конвертируется в accountGold + новое подземелье
+      st.addGold(Math.floor(st.dungeonGold * 0.5));
       const nextId = Math.min((st.pendingBattle.dungeonId || 1) + 1, 5);
       st.setDungeonId(nextId);
       st.setMap(generateDungeonMap(nextId));
@@ -413,6 +418,7 @@ export default function BattleScreen() {
     st.setPendingBattle(null);
     st.resetRun();
     st.setScreen("map");
+    setRewardedUsed(false);
   };
 
   const equippedDefs: RuneDef[] = equippedRunes.map((id) => getRune(id));
@@ -440,9 +446,6 @@ export default function BattleScreen() {
             <span className="font-pixel text-[8px] sm:text-[10px] text-rune-muted uppercase">
               {snap?.enemyIsBoss ? "БОСС" : "Бой"} · {snap?.enemyName ?? ""}
             </span>
-            <RuneButton variant="ghost" onClick={handleQuickRestart} className="text-[10px] py-1 px-2">
-              Сброс
-            </RuneButton>
           </div>
         </div>
 
@@ -522,20 +525,22 @@ export default function BattleScreen() {
                 actionLabel="Забрать награду"
                 extraActions={
                   <RuneButton
-                    variant="ghost"
+                    variant={rewardedUsed ? "ghost" : "gold"}
                     onClick={() => {
+                      if (rewardedUsed) return;
                       getYandexSDK().showRewardedVideo(
                         () => {
-                          // удвоить золото подземелья
                           const st = useGameStore.getState();
                           st.addDungeonGold(st.dungeonGold);
                           getAudio().play("victory");
+                          setRewardedUsed(true);
                         }
                       );
                     }}
+                    disabled={rewardedUsed}
                     className="text-[10px] py-2 px-4"
                   >
-                    Смотреть рекламу x2 золота
+                    {rewardedUsed ? "Уже использовано" : "Смотреть рекламу x2 золота"}
                   </RuneButton>
                 }
               />
@@ -698,6 +703,7 @@ function XpBar({ heroId }: { heroId: string }) {
 }
 
 function ColorLegend() {
+  const labels = ["Атака", "Щит", "Лечение", "Ярость"];
   return (
     <RunePanel>
       <PanelTitle>Кристаллы</PanelTitle>
@@ -710,7 +716,7 @@ function ColorLegend() {
                 className="inline-block w-3 h-3 rounded-sm border border-[#0a0718]"
                 style={{ background: col.base, boxShadow: `0 0 6px ${col.glow}` }}
               />
-              <span className="text-rune-text">{col.name}</span>
+              <span className="text-rune-text">{labels[c]}</span>
             </div>
           );
         })}

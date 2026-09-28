@@ -72,6 +72,48 @@ class AssetLoaderClass {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
+        // Chroma-key: удалить белый/светлый фон → прозрачность
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const cctx = canvas.getContext("2d");
+          if (cctx) {
+            cctx.drawImage(img, 0, 0);
+            const data = cctx.getImageData(0, 0, canvas.width, canvas.height);
+            const px = data.data;
+            for (let i = 0; i < px.length; i += 4) {
+              const r = px[i], g = px[i + 1], b = px[i + 2];
+              // если пиксель почти белый (R>230, G>230, B>230) → прозрачный
+              if (r > 230 && g > 230 && b > 230) {
+                px[i + 3] = 0;
+              }
+              // если почти чёрный фон (R<25, G<25, B<25) → прозрачный
+              else if (r < 25 && g < 25 && b < 25) {
+                px[i + 3] = 0;
+              }
+            }
+            cctx.putImageData(data, 0, 0);
+            const cleanImg = new Image();
+            cleanImg.onload = () => {
+              this.cache.set(id, cleanImg);
+              this.loaded++;
+              this.onProgress?.(this.loaded, this.total);
+              resolve();
+            };
+            cleanImg.onerror = () => {
+              // fallback на оригинал
+              this.cache.set(id, img);
+              this.loaded++;
+              this.onProgress?.(this.loaded, this.total);
+              resolve();
+            };
+            cleanImg.src = canvas.toDataURL();
+            return;
+          }
+        } catch {
+          // canvas не доступен — сохраняем оригинал
+        }
         this.cache.set(id, img);
         this.loaded++;
         this.onProgress?.(this.loaded, this.total);
