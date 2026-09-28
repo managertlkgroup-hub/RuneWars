@@ -10,6 +10,14 @@ import type { EnemyDef } from "../content/enemies";
 import type { RuneDef, RuneId } from "../content/runes";
 import type { Item } from "../content/items";
 
+export interface RunBonuses {
+  redDamageFlat?: number;
+  maxHpBonus?: number;
+  regenPerTurn?: number;
+  startShield?: number;
+  startRage?: number;
+}
+
 export type BattleEvent =
   | { type: "matchVfx"; groups: MatchGroup[]; cascadeLevel: number }
   | { type: "playerDamage"; amount: number; crit: boolean; dodged: boolean }
@@ -58,6 +66,8 @@ export class BattleEngine {
   private rageThisTurn = 0;
   // вампир: лечение за ход (max 5)
   private vampireHealThisTurn = 0;
+  // внутри-забежные бонусы
+  private runBonuses: RunBonuses = {};
 
   constructor(
     heroDef: HeroDef,
@@ -65,12 +75,30 @@ export class BattleEngine {
     heroLevel = 1,
     equippedRunes: RuneDef[] = [],
     metrics?: BoardEngine["metrics"],
-    equippedItems?: { weapon: Item | null; armor: Item | null; amulet: Item | null }
+    equippedItems?: { weapon: Item | null; armor: Item | null; amulet: Item | null },
+    startHp?: number,
+    runBonuses?: RunBonuses
   ) {
     this.hero = new Hero(heroDef, heroLevel);
     this.hero.equipRunes(equippedRunes);
     if (equippedItems) this.hero.equipItems(equippedItems);
+    // внутри-забежные бонусы: +макс HP
+    if (runBonuses?.maxHpBonus) {
+      this.hero.maxHp += runBonuses.maxHpBonus;
+    }
+    // стартовый HP (переносимый)
+    if (startHp !== undefined && startHp > 0) {
+      this.hero.hp = Math.min(this.hero.maxHp, startHp);
+    }
     this.hero.applyCarriedShield();
+    // стартовые щит/ярость от зелий
+    if (runBonuses?.startShield) {
+      this.hero.shield = Math.min(this.hero.maxShield, runBonuses.startShield);
+    }
+    if (runBonuses?.startRage) {
+      this.hero.rage = Math.min(this.hero.maxRage, runBonuses.startRage);
+    }
+    this.runBonuses = runBonuses ?? {};
     this.enemy = new Enemy(enemyDef);
     this.board = new BoardEngine(metrics ?? {
       cellSize: 60,
@@ -134,6 +162,8 @@ export class BattleEngine {
         let dmg = base.damage * lm * mult * favored;
         // бонусы предметов: оружие (+% урона, легендарный fury_strike)
         dmg *= hero.redDamageMultiplier();
+        // внутри-забежный бонус: точильный камень (+flat к урону)
+        if (this.runBonuses.redDamageFlat) dmg += this.runBonuses.redDamageFlat;
         // руна Огонь: +50% на длине 3-4
         const fire = hero.getRune("fire");
         if (fire && fire.canUse() && g.length >= 3 && g.length <= 4) {
@@ -317,6 +347,11 @@ export class BattleEngine {
     }
     if ((ib.healPerTurn ?? 0) > 0) {
       const h = this.hero.heal(ib.healPerTurn!);
+      if (h > 0) this.emit({ type: "playerHeal", amount: h });
+    }
+    // внутри-забежный бонус: регенерация (+HP/ход, вне капа)
+    if ((this.runBonuses.regenPerTurn ?? 0) > 0) {
+      const h = this.hero.heal(this.runBonuses.regenPerTurn!);
       if (h > 0) this.emit({ type: "playerHeal", amount: h });
     }
 

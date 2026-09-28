@@ -249,3 +249,41 @@ Unresolved / Next:
 - Этап 9-10: Полировка, публикация.
 - Рекомендация: следующий webDevReview — Этап 6 (Магазин и Лагерь) для полной реализации точек карты.
 - Риск: pity-таймер в памяти (не сохраняется между сессиями) — будет сохраняться через Яндекс SDK Player.setData в Этапе 8.
+
+---
+Task ID: stage-6
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 6: Магазин и Лагерь (только внутри забега, без мета-прогрессии)
+
+Work Log:
+- Создан src/game/content/shop.ts: пул 8 товаров (зелье лечения 30→36, зелье щита 40→48, зелье ярости 35→42, ключ 50→60, случайная руна 100→120, точильный камень 45→54, сердце гиганта 40→48, регенерация 40→48). generateShopOffers — 3 случайных товара, цены +20% (MARKUP=1.2), 10% шанс скидки -20% на одну позицию (DISCOUNT_CHANCE=0.1), max 2 одинаковых товара за забег (MAX_SAME_PER_RUN=2), руны только при слоте <3.
+- Обновлён src/game/core/GameState.ts: +dungeonGold (золото подземелья, только в забеге), +heroHp/heroMaxHp (переносимый HP между боями), +runBonuses {redDamageFlat, maxHpBonus, regenPerTurn, startShield, startRage, keys}, +shopPurchases (Record<id,count>). Экшены addDungeonGold, setHeroHp, setHeroMaxHp, applyRunBonus (аддитивно), setRunBonuses, incShopPurchase. resetDungeonRun — сброс dungeonGold/heroHp/runBonuses/shopPurchases (при новом подземелье).
+- Обновлён src/game/battle/BattleEngine.ts: конструктор принимает startHp + RunBonuses. Применяет: maxHp += maxHpBonus, hp = startHp (capped), shield = startShield (capped 50), rage = startRage (capped 60). В applyMatches red: dmg += redDamageFlat (точильный камень). В endTurn: +regenPerTurn heal (вне капа). RunBonuses интерфейс экспортирован.
+- Обновлён src/components/screens/BattleScreen.tsx: makeBattle передаёт st.heroHp + st.runBonuses. Victory handler: setHeroHp(hero.hp) + setHeroMaxHp + addDungeonGold(10 + floor*5) (золото за бой). Boss victory → resetDungeonRun (новое подземелье сбрасывает бонусы).
+- Создан src/components/screens/ShopScreen.tsx: модалка "Торговец подземелья". 3 товара с SVG-иконками (heart/shield/rage/key/rune/whetstone/regen), цены с наценкой, скидка (перечёркнутая цена + -20% бейдж). Кнопка Купить (disabled если золота не хватает), после покупки — "Продано". handleBuy применяет эффект (heal/shield/rage/key/rune/redDamage/maxHp/regen) через store экшены. Кнопка "Уйти".
+- Создан src/components/screens/CampScreen.tsx: модалка "Лагерь" с анимированным костром (SVG animate). Кнопки: Отдохнуть (+30% HP, 15% засада → onAmbush), Осмотреть костёр (50% золото 15 / 30% +5 щит / 20% ничего), Идти дальше. Результат в модалке + "Продолжить путь".
+- Создан src/components/screens/EventScreen.tsx: модалка события. Пул 4 событий (Кровавый жертвенник — 12HP за +1 урон, Странный торговец — 30 золота за +15 макс HP, Забытый алтарь рун — руна за 8HP, Разбитый сундук — 50% золото/50% мимик-бой). 2-3 варианта выбора с последствиями. onMimic callback → бой. Результат + "Продолжить путь".
+- Обновлён src/components/screens/MapScreen.tsx: shop/camp/event узлы → локальные модалки (shopModal/campModal/eventModal). onAmbush/onMimic → setPendingBattle + screen battle. Кнопка "Новая карта" → resetDungeonRun. Шапка: dungeonGold (золото подземелья, оранжевый) + heroHp/heroMaxHp (переносимый HP, красный). forceTick в эффекте с eslint-disable (легитимный форс-рендер после мутации статусов).
+
+Верификация через agent-browser:
+- Магазин: "ТОРГОВЕЦ ПОДЗЕМЕЛЬЯ", 3 товара (Зелье лечения 36, Зелье ярости 42, Ключ 60 — цены с +20% наценкой от 30/35/50). Кнопки Купить/Уйти. Купил Зелье лечения: dungeonGold 100→64, предмет помечён "Продано" (осталось 2 Купить), shopPurchases={potion_heal:1}.
+- Лагерь: костёр SVG, HP 50/100. "ОТДОХНУТЬ (+30% HP, 15% ЗАСАДА)", "ОСМОТРЕТЬ КОСТЁР", "ИТИ ДАЛЬШЕ". Нажал Отдохнуть: heroHp 50→80 (+30 = +30% от 100, без засады).
+- Событие: "Странный торговец", 2 варианта (Купить за 30 золота / Отказаться). Купил: dungeonGold 64→34 (−30), runBonuses={maxHpBonus:15} (+15 макс HP в следующем бою). Результат "Торговец доволен..." + "Продолжить путь".
+- Статический экспорт: out/ = 1.4 MB, lint чистый, dev:200.
+
+Stage Summary:
+- Этап 6 (Магазин и Лагерь) ЗАВЕРШЁН и верифицирован: магазин внутри забега (3 товара, +20% цены, 10% скидка, max 2/забег), лагерь (отдых/костёр/идти, 15% засада), событие (4 события, 2-3 выбора, мимик-бой). Переносимый HP между боями, золото подземелья, внутри-забежные бонусы (точильный камень +1 урон, сердце гиганта +10 HP, регенерация +1/ход, зелья щита/ярости). resetDungeonRun при новом подземелье.
+- НЕ сделано (по ТЗ — Этап 7): магазин в лагере между забегами, улучшение рун, крафт, прокачка героя.
+- Артефакты: скриншоты /home/z/my-project/screenshots/ (stage6-shop.png, stage6-camp.png, stage6-event.png, stage6-event-result.png).
+
+Current Project Status:
+- Этапы 1-6 завершены. Полный цикл: карта → бой/сундук/магазин/лагерь/событие → награда/покупки/отдых → карта → ... → босс → новое подземелье.
+- Переносимый HP, золото подземелья, внутри-забежные бонусы работают.
+- Статический экспорт: out/ = 1.4 MB, lint чистый, FPS 60.
+
+Unresolved / Next:
+- Этап 7: Прокачка и герои (уровни 1-30, перки каждые 5 уровней, престиж, открытие героев за золото аккаунта, мета-прогрессия — золото аккаунта тратится в Лагере).
+- Этап 8: Яндекс SDK (LoadingAPI.ready, Player.setData, реклама, инап, сохранение pity/инвентаря).
+- Этап 9-10: Полировка, публикация.
+- Рекомендация: следующий webDevReview — Этап 7 (Прокачка и герои + мета-прогрессия золота аккаунта).
+- Риск: heroHp/runBonuses/dungeonGold в памяти (не сохраняются между сессиями) — Яндекс SDK Player.setData в Этапе 8.

@@ -19,6 +19,9 @@ import {
 import { getDungeon } from "@/game/content/enemies";
 import { chestTypeForFloor, CHESTS, openChest, type ChestType } from "@/game/content/items";
 import type { ChestResult } from "@/components/screens/ChestScreen";
+import ShopScreen from "@/components/screens/ShopScreen";
+import CampScreen from "@/components/screens/CampScreen";
+import EventScreen from "@/components/screens/EventScreen";
 import { useToast } from "@/hooks/use-toast";
 
 const CW = 1152;
@@ -56,9 +59,15 @@ export default function MapScreen() {
   const addGold = useGameStore((s) => s.addGold);
   const equippedRunes = useGameStore((s) => s.equippedRunes);
   const gold = useGameStore((s) => s.gold);
+  const dungeonGold = useGameStore((s) => s.dungeonGold);
+  const heroHp = useGameStore((s) => s.heroHp);
+  const heroMaxHp = useGameStore((s) => s.heroMaxHp);
   const { toast } = useToast();
   const [, forceTick] = useState(0);
   const [chestModal, setChestModal] = useState<{ chestType: ChestType; nodeId: number; result: ChestResult } | null>(null);
+  const [shopModal, setShopModal] = useState<{ nodeId: number } | null>(null);
+  const [campModal, setCampModal] = useState<{ nodeId: number } | null>(null);
+  const [eventModal, setEventModal] = useState<{ nodeId: number } | null>(null);
 
   // генерация карты при отсутствии — в эффекте (не в рендере)
   const map: DungeonMap = useMemo(() => {
@@ -74,6 +83,8 @@ export default function MapScreen() {
       return;
     }
     refreshStatuses(currentMap);
+    // форс-рендер после мутации статусов узлов
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     forceTick((n) => n + 1);
     if (typeof window !== "undefined") {
       (window as unknown as { __store?: typeof useGameStore }).__store = useGameStore;
@@ -140,34 +151,15 @@ export default function MapScreen() {
         break;
       }
       case "camp": {
-        // +30% HP, 15% засада
-        const ambush = Math.random() < 0.15;
-        if (ambush) {
-          setPendingBattle({
-            floor: node.floor,
-            isBoss: false,
-            nodeType: "battle",
-            nodeId: node.id,
-            dungeonId: currentDungeonId,
-          });
-          useGameStore.getState().resetRun();
-          setScreen("battle");
-          toast({ title: "Засада!", description: "Ночью на лагерь напали враги." });
-        } else {
-          setLastNodeReward({ kind: "camp", label: "Отдых: +30% HP в следующем бою" });
-          toast({ title: "Отдых", description: "Герой восстановил силы. +30% HP в следующем бою." });
-        }
+        setCampModal({ nodeId: node.id });
         break;
       }
       case "shop": {
-        setLastNodeReward({ kind: "shop", label: "Магазин" });
-        toast({ title: "Магазин", description: "Товары доступны в Лагере (Этап 6)." });
+        setShopModal({ nodeId: node.id });
         break;
       }
       case "event": {
-        // простой вариант: первый выбор — +20 HP
-        setLastNodeReward({ kind: "event", amount: 20, label: "Событие: +20 HP" });
-        toast({ title: "Событие", description: "Странник благодарит вас. +20 HP в следующем бою." });
+        setEventModal({ nodeId: node.id });
         break;
       }
       case "start":
@@ -197,12 +189,20 @@ export default function MapScreen() {
               <svg width="12" height="12" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#c9a227" stroke="#1a0a1e" strokeWidth="3" /></svg>
               {gold}
             </span>
+            <span className="font-pixel text-[9px] text-rune-warm flex items-center gap-1" title="Золото подземелья">
+              <svg width="10" height="10" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="#c9a227" stroke="#1a0a1e" strokeWidth="3" /></svg>
+              {dungeonGold}
+            </span>
+            <span className="font-pixel text-[8px] text-rune-red" title="HP героя (переносимый)">
+              HP {heroHp}/{heroMaxHp}
+            </span>
             <RuneButton
               variant="ghost"
               onClick={() => {
                 const m = generateDungeonMap(currentDungeonId);
                 setMap(m);
                 useGameStore.getState().resetRun();
+                useGameStore.getState().resetDungeonRun();
               }}
               className="text-[10px] py-1 px-2"
             >
@@ -364,6 +364,68 @@ export default function MapScreen() {
               setChestModal(null);
               refreshStatuses(map);
               forceTick((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
+      {/* модалка магазина */}
+      {shopModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-2">
+          <ShopScreen
+            onDone={() => {
+              setShopModal(null);
+              refreshStatuses(map);
+              forceTick((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
+      {/* модалка лагеря */}
+      {campModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-2">
+          <CampScreen
+            onDone={() => {
+              setCampModal(null);
+              refreshStatuses(map);
+              forceTick((n) => n + 1);
+            }}
+            onAmbush={() => {
+              setCampModal(null);
+              const node = map.nodes.find((n) => n.id === campModal.nodeId);
+              setPendingBattle({
+                floor: node?.floor ?? 1,
+                isBoss: false,
+                nodeType: "battle",
+                nodeId: campModal.nodeId,
+                dungeonId: currentDungeonId,
+              });
+              useGameStore.getState().resetRun();
+              setScreen("battle");
+            }}
+          />
+        </div>
+      )}
+      {/* модалка события */}
+      {eventModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-2">
+          <EventScreen
+            onDone={() => {
+              setEventModal(null);
+              refreshStatuses(map);
+              forceTick((n) => n + 1);
+            }}
+            onMimic={() => {
+              setEventModal(null);
+              const node = map.nodes.find((n) => n.id === eventModal.nodeId);
+              setPendingBattle({
+                floor: node?.floor ?? 1,
+                isBoss: false,
+                nodeType: "battle",
+                nodeId: eventModal.nodeId,
+                dungeonId: currentDungeonId,
+              });
+              useGameStore.getState().resetRun();
+              setScreen("battle");
             }}
           />
         </div>

@@ -69,7 +69,21 @@ interface GameUIState {
   equippedItems: { weapon: Item | null; armor: Item | null; amulet: Item | null };
   pityCounter: number;
   pendingChest: { chestType: ChestType; nodeId: number } | null;
-  pendingDrop: Item | null; // дроп с элиты/босса
+  pendingDrop: Item | null;
+
+  // внутри-забежные бонусы (сбрасываются при новом забеге)
+  dungeonGold: number; // золото подземелья (только в забеге)
+  heroHp: number; // переносимый HP между боями
+  heroMaxHp: number; // базовый макс HP героя (с бонусами)
+  runBonuses: {
+    redDamageFlat?: number; // точильный камень +1
+    maxHpBonus?: number; // сердце гиганта +10
+    regenPerTurn?: number; // регенерация +1/ход
+    startShield?: number; // зелье щита
+    startRage?: number; // зелье ярости
+    keys?: number; // ключи
+  };
+  shopPurchases: Record<string, number>;
 
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
@@ -98,7 +112,16 @@ interface GameUIState {
   setPendingChest: (c: GameUIState["pendingChest"]) => void;
   setPendingDrop: (d: Item | null) => void;
 
+  addDungeonGold: (n: number) => void;
+  setDungeonGold: (n: number) => void;
+  setHeroHp: (n: number) => void;
+  setHeroMaxHp: (n: number) => void;
+  applyRunBonus: (b: Partial<GameUIState["runBonuses"]>) => void;
+  setRunBonuses: (b: GameUIState["runBonuses"]) => void;
+  incShopPurchase: (id: string) => void;
+
   resetRun: () => void;
+  resetDungeonRun: () => void;
   resetAll: () => void;
 }
 
@@ -125,6 +148,11 @@ export const useGameStore = create<GameUIState>((set) => ({
   pityCounter: 0,
   pendingChest: null,
   pendingDrop: null,
+  dungeonGold: 0,
+  heroHp: 100,
+  heroMaxHp: 100,
+  runBonuses: {},
+  shopPurchases: {},
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),
@@ -187,6 +215,26 @@ export const useGameStore = create<GameUIState>((set) => ({
   setPendingChest: (pendingChest) => set({ pendingChest }),
   setPendingDrop: (pendingDrop) => set({ pendingDrop }),
 
+  addDungeonGold: (n) => set((s) => ({ dungeonGold: Math.max(0, s.dungeonGold + n) })),
+  setDungeonGold: (dungeonGold) => set({ dungeonGold: Math.max(0, dungeonGold) }),
+  setHeroHp: (heroHp) => set({ heroHp: Math.max(0, Math.round(heroHp)) }),
+  setHeroMaxHp: (heroMaxHp) => set({ heroMaxHp }),
+  applyRunBonus: (b) =>
+    set((s) => ({
+      runBonuses: {
+        ...s.runBonuses,
+        redDamageFlat: (s.runBonuses.redDamageFlat ?? 0) + (b.redDamageFlat ?? 0),
+        maxHpBonus: (s.runBonuses.maxHpBonus ?? 0) + (b.maxHpBonus ?? 0),
+        regenPerTurn: (s.runBonuses.regenPerTurn ?? 0) + (b.regenPerTurn ?? 0),
+        startShield: (s.runBonuses.startShield ?? 0) + (b.startShield ?? 0),
+        startRage: (s.runBonuses.startRage ?? 0) + (b.startRage ?? 0),
+        keys: (s.runBonuses.keys ?? 0) + (b.keys ?? 0),
+      },
+    })),
+  setRunBonuses: (runBonuses) => set({ runBonuses }),
+  incShopPurchase: (id) =>
+    set((s) => ({ shopPurchases: { ...s.shopPurchases, [id]: (s.shopPurchases[id] ?? 0) + 1 } })),
+
   resetRun: () =>
     set({
       score: 0,
@@ -195,6 +243,13 @@ export const useGameStore = create<GameUIState>((set) => ({
       totalMatches: 0,
       lastMatchSummary: null,
     }),
+  resetDungeonRun: () =>
+    set((s) => ({
+      dungeonGold: 0,
+      heroHp: s.heroMaxHp,
+      runBonuses: {},
+      shopPurchases: {},
+    })),
   resetAll: () =>
     set({
       score: 0,

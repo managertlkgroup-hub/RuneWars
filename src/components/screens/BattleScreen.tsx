@@ -59,7 +59,16 @@ function makeBattle(
   const enemyDef = pickEnemyForFloor(dungeonId, floor, isBoss);
   const runeDefs = equippedRunes.map((id) => getRune(id));
   const st = useGameStore.getState();
-  const b = new BattleEngine(heroDef, enemyDef, 1, runeDefs, metrics, st.equippedItems);
+  const b = new BattleEngine(
+    heroDef,
+    enemyDef,
+    1,
+    runeDefs,
+    metrics,
+    st.equippedItems,
+    st.heroHp,
+    st.runBonuses
+  );
   b.start();
   return b;
 }
@@ -204,6 +213,12 @@ export default function BattleScreen() {
       } else if (e.type === "victory") {
         setPhaseSafe("victory");
         audio.play("victory");
+        // сохранить переносимый HP после боя + выдать золото подземелья
+        const st = useGameStore.getState();
+        st.setHeroHp(b.hero.hp);
+        st.setHeroMaxHp(b.hero.maxHp);
+        const goldReward = 10 + (st.pendingBattle?.floor ?? 1) * 5;
+        st.addDungeonGold(goldReward);
         const cx = 968;
         const cy = 300;
         for (let i = 0; i < 6; i++) {
@@ -213,7 +228,6 @@ export default function BattleScreen() {
           }, i * 120);
         }
         // гарантированный дроп с элиты/босса
-        const st = useGameStore.getState();
         const pb = st.pendingBattle;
         if (pb && (pb.nodeType === "elite" || pb.nodeType === "boss")) {
           const drop = pb.nodeType === "boss" ? dropBossLoot() : dropEliteLoot();
@@ -342,10 +356,11 @@ export default function BattleScreen() {
     // возврат на карту
     const st = useGameStore.getState();
     if (st.pendingBattle?.isBoss) {
-      // новое подземелье
+      // новое подземелье — сброс внутри-забежных бонусов
       const nextId = Math.min((st.pendingBattle.dungeonId || 1) + 1, 5);
       st.setDungeonId(nextId);
       st.setMap(generateDungeonMap(nextId));
+      st.resetDungeonRun();
     }
     st.setPendingBattle(null);
     st.setScreen("map");
