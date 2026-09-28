@@ -2,6 +2,7 @@
 
 import type { BattleEngine } from "../battle/BattleEngine";
 import type { ParticlePool } from "./VFX";
+import { AssetLoader } from "../core/AssetLoader";
 import { GEM_COLOR_HEX } from "../content/balance";
 
 interface FloatNum {
@@ -143,7 +144,18 @@ export class CharacterRenderer {
     ctx.restore();
 
     if (!isDead) {
+      // PNG-спрайт с fallback на процедурный
+      let sprite: HTMLImageElement | null = null;
       if (side === "hero") {
+        sprite = AssetLoader.getHero(def.mechanicId);
+      } else {
+        sprite = AssetLoader.getEnemy(def.archetype);
+      }
+      if (sprite) {
+        ctx.save();
+        ctx.drawImage(sprite, -PORTRAIT_W / 2, -PORTRAIT_H / 2, PORTRAIT_W, PORTRAIT_H);
+        ctx.restore();
+      } else if (side === "hero") {
         this.drawWarrior(ctx, def.palette);
       } else {
         this.drawEnemy(ctx, def.palette, def.archetype, enemy.def.isBoss);

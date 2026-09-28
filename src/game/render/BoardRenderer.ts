@@ -4,6 +4,7 @@ import type { Gem, GemColor } from "../battle/types";
 import type { BoardEngine } from "../battle/BoardEngine";
 import { BOARD_SIZE, GEM_COLOR_HEX } from "../content/balance";
 import { ParticlePool } from "./VFX";
+import { AssetLoader } from "../core/AssetLoader";
 
 export class BoardRenderer {
   ctx: CanvasRenderingContext2D | null = null;
@@ -64,20 +65,22 @@ export class BoardRenderer {
 
   private renderBackground(canvasW: number, canvasH: number, dt: number) {
     const ctx = this.ctx;
-    // тёмный градиент фона
-    const grad = ctx.createRadialGradient(
-      canvasW / 2,
-      canvasH / 2,
-      0,
-      canvasW / 2,
-      canvasH / 2,
-      Math.max(canvasW, canvasH) * 0.8
-    );
-    grad.addColorStop(0, "#1a0f2e");
-    grad.addColorStop(0.6, "#0e0820");
-    grad.addColorStop(1, "#070510");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    // PNG-фон подземелья (fallback: градиент)
+    const bg = AssetLoader.getBackground(1);
+    if (bg) {
+      ctx.drawImage(bg, 0, 0, canvasW, canvasH);
+    } else {
+      const grad = ctx.createRadialGradient(
+        canvasW / 2, canvasH / 2, 0,
+        canvasW / 2, canvasH / 2,
+        Math.max(canvasW, canvasH) * 0.8
+      );
+      grad.addColorStop(0, "#1a0f2e");
+      grad.addColorStop(0.6, "#0e0820");
+      grad.addColorStop(1, "#070510");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+    }
 
     // декоративные плавающие частицы (пыль/прун)
     for (const p of this.bgParticles) {

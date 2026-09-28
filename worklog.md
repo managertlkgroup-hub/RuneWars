@@ -483,3 +483,55 @@ Unresolved / Next:
 - Этап 10: Подготовка к публикации (создание товаров в Консоли Яндекса, инап-покупки, финальный архив).
 - Рекомендация: следующий webDevReview — Этап 9 (полировка) или Этап 10 (публикация).
 - Риск: i18n (8.5) частично — полный словарь требует рефакторинга всех UI-текстов.
+
+---
+Task ID: stage-9
+Agent: webDevReview (cron)
+Task: RUNE WARS — Этап 9: Полировка (PNG-ассеты через AI image generation)
+
+Work Log:
+9.1 — AI-генерация PNG-ассетов (через z-ai image CLI):
+- Единый стиль: "16-bit pixel art [объект], dark fantasy, isolated sprite, transparent background"
+- 6 фонов (1344×768): bg-crypt (dungeon с факелами/колоннами), bg-menu (вход в подземелье), bg-victory (сокровищница), bg-defeat (камера с черепами), bg-camp (ночной лагерь с костром), bg-inventory (тёмная комната хранения)
+- 6 героев (1024×1024): hero-warrior (меч+щит+красный плащ), hero-mage (синяя мантия+посох), hero-priestess (белое одеяние), hero-rogue (тёмный плащ+кинжалы), hero-paladin (золотая броня), hero-necromancer (тёмное одеяние+посох с черепом)
+- 4 врага + 1 босс (1024×1024): enemy-goblin-warrior, enemy-goblin-archer, enemy-slime, enemy-goblin-shaman, boss-goblin-king (король с короной и топором)
+- 1 логотип (1344×768): logo.png (золотой металлический текст с красным свечением)
+- Всего: 18 PNG, 1.9 MB
+
+9.2 — AssetLoader:
+- Создан src/game/core/AssetLoader.ts: предзагрузка всех PNG через Promise.all с Image(), кеш в Map, onProgress callback (loaded/total), fallback (если файл не загрузился → null → процедурная отрисовка).
+- ASSET_LIST (18 ассетов). getHero(mechanicId), getEnemy(archetype), getBackground(dungeonId).
+- page.tsx: предзагрузка в loading screen с прогресс-баром (Загрузка N/M) + logo.png на экране загрузки.
+
+9.3 — Замена в коде:
+- BoardRenderer.renderBackground: ctx.drawImage(bg, 0, 0, canvasW, canvasH) — PNG-фон подземелья. Fallback: процедурный радиальный градиент.
+- CharacterRenderer.renderCharacter: ctx.drawImage(sprite, ...) для героя (AssetLoader.getHero) и врага (AssetLoader.getEnemy). Fallback: процедурные drawWarrior/drawEnemy.
+- page.tsx loading screen: <img src="/assets/logo.png"> если загружен, иначе текст "RUNE WARS".
+
+9.4 — VFX (уже работают):
+- Искры при уничтожении кристаллов (ParticlePool burst) ✓
+- Тряска экрана при ударе (BoardRenderer.addShake, амплитуда = урон) ✓
+- Combo flash в центре при каскаде ✓
+- Hit-flash при попадании (красный/жёлтый ColorRect) ✓
+
+9.5 — Звуки: AudioEngine уже имеет 19 звуков (click, hover, matchRed/Blue/Green/Yellow, cascade, enemyHit, enemyAttack, heal, shield, rage, rageStrike, rune, bomb, freeze, victory, defeat, levelUp). Все через Web Audio API синтез.
+
+Верификация через agent-browser + VLM:
+- Загрузка: прогресс-бар + logo.png (быстро, ассеты локальные).
+- Бой: VLM подтвердил — "PNG-картинка (детализированная 2D-графика каменных стен, арок, колонн и факелов)" + "реальные спрайты с детализацией (не силуэты). У воина видна полноценная броня, плащ и щит; у гоблина — форма тела, уши и цвет" + "металлические доспехи (шлем, нагрудник, наплечники), красный плащ, меч и щит с гербом".
+- Статический экспорт: out/ = 3.3 MB (1.4 игра + 1.9 ассеты), lint чистый, dev:200.
+
+Stage Summary:
+- Этап 9 (Полировка) — PNG-ассеты ЗАВЕРШЁН: 18 AI-сгенерированных PNG (фоны, герои, враги, босс, логотип). AssetLoader с прогрессом+fallback. Интеграция в canvas (фон+спрайты). VFX уже работают.
+- Игра выглядит как finished product, не прототип: детализированные спрайты вместо силуэтов, атмосферные фоны вместо градиентов.
+- out/ = 3.3 MB (хорошо < 100 МБ лимита Яндекса).
+- Артефакты: скриншоты stage9-battle-png.png (бой с PNG-фоном+спрайтами), stage9-map.png, stage9-loading.png.
+
+Current Project Status:
+- Этапы 1-9 завершены. Игра технически готова к публикации (полный цикл + Яндекс SDK + PNG-ассеты).
+- 9 из 10 этапов готово.
+
+Unresolved / Next:
+- Этап 10: Подготовка к публикации (создание товаров в Консоли Яндекса, инап-покупки consumePurchase, финальный архив <100МБ, проверка чек-листа Яндекса).
+- Дополнительно: можно сгенерировать больше врагов (подземелья 2-5) + больше фонов (bg-bones, bg-flooded, bg-shadow, bg-forge, bg-shop, bg-reward).
+- Рекомендация: следующий webDevReview — Этап 10 (публикация) или дополнительные ассеты.

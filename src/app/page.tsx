@@ -11,63 +11,53 @@ import CampMetaScreen from "@/components/screens/CampMetaScreen";
 import { useGameStore } from "@/game/core/GameState";
 import { getYandexSDK } from "@/game/core/YandexSDK";
 import { getAudio } from "@/game/core/AudioEngine";
+import { AssetLoader } from "@/game/core/AssetLoader";
 
 export default function Home() {
   const [loaded, setLoaded] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
   const screen = useGameStore((s) => s.screen);
   const setScreen = useGameStore((s) => s.setScreen);
   const setDebugReady = useGameStore((s) => s.setDebugReady);
 
   useEffect(() => {
-    // отключение контекстного меню (требование Яндекса)
     const prevent = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("contextmenu", prevent);
-
-    // expose audio engine для blur/focus обработчика SDK
+    const audioEngine = getAudio();
     if (typeof window !== "undefined") {
       (window as unknown as { __audioEngine?: typeof audioEngine }).__audioEngine = audioEngine;
     }
-
-    // setup blur/focus аудио пауза (требование Яндекса 8.4)
     const sdk = getYandexSDK();
     sdk.setupBlurFocus();
 
+    // Предзагрузка ассетов
+    AssetLoader.onProgress = (loaded, total) => {
+      setProgress(loaded);
+      setProgressTotal(total);
+    };
+
     const t = setTimeout(async () => {
+      // Загрузить PNG-ассеты
+      await AssetLoader.loadAll();
       setLoaded(true);
       setScreen("map");
 
-      // Yandex SDK: инициализация
+      // Yandex SDK
       await sdk.init();
-
-      // LoadingAPI.ready() — игра готова, игрок может начать
       sdk.loadingReady();
-
-      // Game Ready индикатор (90с)
       setDebugReady(true);
       setTimeout(() => setDebugReady(false), 90000);
-
-      // автоопределение языка
       const lang = sdk.getLang();
       console.log("[YandexSDK] language:", lang);
 
-      // синхронизация Player данных (если доступно)
+      // Player sync
       try {
-        const playerData = await sdk.loadPlayerData([
-          "accountGold",
-          "heroLevels",
-          "unlockedHeroes",
-        ]);
-        if (playerData) {
+        const playerData = await sdk.loadPlayerData(["accountGold", "heroLevels", "unlockedHeroes"]);
+        if (playerData && playerData.accountGold !== undefined) {
           const st = useGameStore.getState();
-          // если Player имеет данные — загрузить их (приоритет над localStorage)
-          if (playerData.accountGold !== undefined) {
-            const playerGold = Number(playerData.accountGold) || 0;
-            const localGold = st.accountGold;
-            // взять максимум (в случае конфликта)
-            if (playerGold > localGold) {
-              st.addGold(playerGold - localGold);
-            }
-          }
+          const playerGold = Number(playerData.accountGold) || 0;
+          if (playerGold > st.accountGold) st.addGold(playerGold - st.accountGold);
         }
       } catch (e) {
         console.warn("[YandexSDK] player data sync failed", e);
@@ -80,22 +70,25 @@ export default function Home() {
     };
   }, [setScreen, setDebugReady]);
 
-  const audioEngine = getAudio();
-
   if (!loaded) {
+    const logo = AssetLoader.get("logo");
     return (
       <main className="fixed inset-0 w-screen h-screen bg-rune-bg overflow-hidden">
         <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-          <div className="font-pixel text-rune-gold text-glow-gold text-base sm:text-2xl tracking-widest">
-            RUNE WARS
-          </div>
+          {logo ? (
+            <img src="/assets/logo.png" alt="RUNE WARS" className="max-w-md w-full" />
+          ) : (
+            <div className="font-pixel text-rune-gold text-glow-gold text-base sm:text-2xl tracking-widest">
+              RUNE WARS
+            </div>
+          )}
           <div className="font-body text-rune-muted text-xs uppercase tracking-widest">
-            Загрузка...
+            Загрузка... {progress}/{progressTotal || AssetLoader.total}
           </div>
           <div className="w-48 h-1 rounded-full bg-[#1f1638] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-rune-gold to-rune-warm animate-pulse"
-              style={{ width: "60%" }}
+              className="h-full bg-gradient-to-r from-rune-gold to-rune-warm transition-all duration-300"
+              style={{ width: `${progressTotal > 0 ? (progress / progressTotal) * 100 : 0}%` }}
             />
           </div>
         </div>
