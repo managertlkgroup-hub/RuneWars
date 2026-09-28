@@ -238,9 +238,9 @@ export default function BattleScreen() {
         const st = useGameStore.getState();
         st.setHeroHp(b.hero.hp);
         st.setHeroMaxHp(b.hero.maxHp);
-        // награда dungeonGold: 3 + floor*2 (элита ×2, босс ×3 + 30)
+        // награда dungeonGold: 4 + floor*2 (элита ×2, босс ×3 + 30)
         const pb2 = st.pendingBattle;
-        let goldReward = 3 + (pb2?.floor ?? 1) * 2;
+        let goldReward = 4 + (pb2?.floor ?? 1) * 2;
         if (pb2?.nodeType === "elite") goldReward *= 2;
         if (pb2?.isBoss) goldReward = goldReward * 3 + 30;
         st.addDungeonGold(goldReward);
@@ -393,9 +393,9 @@ export default function BattleScreen() {
     const pb = st.pendingBattle;
     if (pb) {
       const floor = pb.floor || 1;
-      let xp = 10 * floor;
-      if (pb.nodeType === "elite") xp = 30 * floor;
-      if (pb.isBoss) xp = 100 * floor;
+      let xp = 15 * floor;
+      if (pb.nodeType === "elite") xp = 40 * floor;
+      if (pb.isBoss) xp = 150 * floor;
       const xpResult = st.addHeroXp(st.activeHero, xp);
       if (xpResult.perksToChoose.length > 0) {
         st.setPendingPerkLevel(xpResult.perksToChoose[0]);
@@ -413,8 +413,8 @@ export default function BattleScreen() {
   // Поражение / сброс → возврат на карту
   const handleQuickRestart = () => {
     const st = useGameStore.getState();
-    // при поражении: 50% dungeonGold сохраняется как accountGold
-    st.addGold(Math.floor(st.dungeonGold * 0.5));
+    // при поражении: 25% dungeonGold сохраняется как accountGold
+    st.addGold(Math.floor(st.dungeonGold * 0.25));
     st.setPendingBattle(null);
     st.resetRun();
     st.setScreen("map");
@@ -521,6 +521,7 @@ export default function BattleScreen() {
                 titleColor="text-rune-gold text-glow-gold"
                 subtitle={pendingBattle?.isBoss ? "Босс повержен! Откроется следующее подземелье." : snap ? `Враг повержен за ${snap.turn} ходов` : ""}
                 score={score}
+                goldEarned={useGameStore.getState().dungeonGold}
                 onAction={handleClaimReward}
                 actionLabel="Забрать награду"
                 extraActions={
@@ -687,7 +688,7 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 function XpBar({ heroId }: { heroId: string }) {
   const level = useGameStore((s) => s.heroLevels[heroId] ?? 1);
   const xp = useGameStore((s) => s.heroXp[heroId] ?? 0);
-  const need = 100 + level * 50;
+  const need = 100 + level * 100;
   const pct = Math.min(100, (xp / need) * 100);
   return (
     <div className="flex flex-col gap-0.5">
@@ -730,6 +731,7 @@ function Overlay({
   titleColor,
   subtitle,
   score,
+  goldEarned,
   onAction,
   actionLabel,
   extraActions,
@@ -738,6 +740,7 @@ function Overlay({
   titleColor: string;
   subtitle: string;
   score: number;
+  goldEarned?: number;
   onAction: () => void;
   actionLabel: string;
   extraActions?: React.ReactNode;
@@ -749,6 +752,9 @@ function Overlay({
       </div>
       <div className="font-body text-rune-muted text-sm">{subtitle}</div>
       <div className="font-pixel text-rune-gold text-base">Очки: {score}</div>
+      {goldEarned !== undefined && goldEarned > 0 && (
+        <div className="font-pixel text-rune-warm text-sm">+{goldEarned} золота</div>
+      )}
       <RuneButton variant="gold" onClick={onAction} className="text-xs px-6 py-3">
         {actionLabel}
       </RuneButton>

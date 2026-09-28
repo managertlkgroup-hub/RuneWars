@@ -90,10 +90,10 @@ export default function InventoryScreen({ onClose }: { onClose: () => void }) {
         })}
       </div>
 
-      {/* тултип */}
+      {/* тултип — абсолют, не двигает layout */}
       {hovered && (
         <div
-          className="max-w-md px-3 py-2 rounded-lg border-2 bg-[#0a0718]/95 text-center"
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 max-w-md px-3 py-2 rounded-lg border-2 bg-[#0a0718]/95 text-center pointer-events-none"
           style={{ borderColor: RARITIES[hovered.rarity].color, boxShadow: `0 0 10px ${RARITIES[hovered.rarity].glow}` }}
         >
           <div className="font-pixel text-[10px]" style={{ color: RARITIES[hovered.rarity].color }}>

@@ -5,31 +5,23 @@ import { RunePanel } from "@/components/ui/RunePanel";
 import { HEROES } from "@/game/content/heroes";
 import { useGameStore } from "@/game/core/GameState";
 import { getAudio } from "@/game/core/AudioEngine";
+import { AssetLoader } from "@/game/core/AssetLoader";
 import { useToast } from "@/hooks/use-toast";
 
-// простые SVG-портреты героев
-function HeroPortrait({ id, palette, size = 56 }: { id: string; palette: { body: string; accent: string; eye: string; cape: string }; size?: number }) {
+// PNG-спрайт героя из AssetLoader (chroma-keyed, прозрачный фон)
+function HeroPortrait({ id, size = 56 }: { id: string; size?: number }) {
+  const img = AssetLoader.getHero(id);
+  const src = img?.src ?? `/assets/hero-${id}.png`;
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48">
-      {/* плащ */}
-      <path d="M14 12 Q24 6 34 12 L40 40 L8 40 Z" fill={palette.cape} stroke="#1a0a1e" strokeWidth="1.5" />
-      {/* тело */}
-      <rect x="18" y="18" width="12" height="14" rx="2" fill={palette.body} stroke="#1a0a1e" strokeWidth="1.5" />
-      {/* голова */}
-      <circle cx="24" cy="14" r="6" fill="#e8c8a8" stroke="#1a0a1e" strokeWidth="1.5" />
-      {/* шлем/капюшон */}
-      <path d="M18 14 Q24 6 30 14" fill={palette.accent} stroke="#1a0a1e" strokeWidth="1" />
-      {/* глаза */}
-      <circle cx="22" cy="14" r="1.2" fill={palette.eye} />
-      <circle cx="26" cy="14" r="1.2" fill={palette.eye} />
-      {/* деталь по классу */}
-      {id === "warrior" && <rect x="30" y="20" width="3" height="14" fill="#d8d8e8" stroke="#1a0a1e" strokeWidth="1" />}
-      {id === "mage" && <circle cx="24" cy="8" r="2.5" fill={palette.accent} stroke="#1a0a1e" strokeWidth="1" />}
-      {id === "priestess" && <path d="M22 30 L26 30 L27 36 L21 36 Z" fill={palette.accent} />}
-      {id === "rogue" && <path d="M30 18 L34 14 L32 22 Z" fill="#d8d8e8" stroke="#1a0a1e" strokeWidth="1" />}
-      {id === "paladin" && <path d="M22 8 L24 4 L26 8 L24 12 Z" fill={palette.accent} stroke="#1a0a1e" strokeWidth="1" />}
-      {id === "necromancer" && <circle cx="24" cy="10" r="3" fill="#e8dcc0" stroke="#1a0a1e" strokeWidth="1" opacity="0.7" />}
-    </svg>
+    <img
+      src={src}
+      alt={id}
+      width={size}
+      height={size}
+      className="rounded-lg object-contain"
+      style={{ imageRendering: "pixelated" }}
+      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+    />
   );
 }
 
@@ -92,7 +84,7 @@ export default function HeroSelectScreen({ onClose }: { onClose: () => void }) {
               }}
             >
               <div className="relative">
-                <HeroPortrait id={h.id} palette={h.palette} size={56} />
+                <HeroPortrait id={h.id} size={56} />
                 {prestige > 0 && (
                   <span className="absolute -top-1 -right-1 font-pixel text-[7px] text-rune-gold-light bg-[#1a0a1e] px-1 rounded">
                     {prestige}★

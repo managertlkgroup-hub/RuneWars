@@ -112,7 +112,7 @@ export default function CampMetaScreen({ onClose }: { onClose: () => void }) {
             const unlocked = unlockedHeroes.includes(h.id);
             const lvl = heroLevels[h.id] ?? 1;
             const xp = heroXp[h.id] ?? 0;
-            const need = 100 + lvl * 50;
+            const need = 100 + lvl * 100;
             const pct = Math.min(100, (xp / need) * 100);
             const prest = heroPrestige[h.id] ?? 0;
             const canPrestige = lvl >= 30 && prest < 5;

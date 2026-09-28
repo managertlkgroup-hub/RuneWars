@@ -386,9 +386,9 @@ export const useGameStore = create<GameUIState>((set) => ({
     curXp += xp;
     const perksToChoose: number[] = [];
     let leveledUp = false;
-    // формула: для уровня N нужно 100 + N*50 XP
+    // формула: для уровня N нужно 100 + N*100 XP
     while (level < 30) {
-      const need = 100 + level * 50;
+      const need = 100 + level * 100;
       if (curXp >= need) {
         curXp -= need;
         level++;

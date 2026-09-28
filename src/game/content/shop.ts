@@ -4,111 +4,42 @@ export interface ShopItemDef {
   id: string;
   name: string;
   description: string;
-  basePrice: number; // базовая цена (будет +20%)
-  icon: string; // ключ для ItemIcon/MapNodeIcon или эмодзи-заменитель
-  // эффект — применяется при покупке
-  effect: {
-    kind: "heal" | "shield" | "rage" | "key" | "rune" | "redDamage" | "maxHp" | "regen";
-    amount?: number;
-  };
+  basePrice: number;
+  icon: string;
+  effect: { kind: "heal" | "shield" | "rage" | "key" | "rune" | "redDamage" | "maxHp" | "regen"; amount?: number };
 }
 
-// Пул товаров (базовые цены из ТЗ)
 export const SHOP_POOL: ShopItemDef[] = [
-  {
-    id: "potion_heal",
-    name: "Зелье лечения",
-    description: "+30 HP немедленно (вне боя, без капа).",
-    basePrice: 20,
-    icon: "heart",
-    effect: { kind: "heal", amount: 30 },
-  },
-  {
-    id: "potion_shield",
-    name: "Зелье щита",
-    description: "+20 щит в начале следующего боя (кап 50).",
-    basePrice: 30,
-    icon: "shield",
-    effect: { kind: "shield", amount: 20 },
-  },
-  {
-    id: "potion_rage",
-    name: "Зелье ярости",
-    description: "+40 ярости в начале следующего боя (кап 60).",
-    basePrice: 25,
-    icon: "rage",
-    effect: { kind: "rage", amount: 40 },
-  },
-  {
-    id: "key",
-    name: "Ключ",
-    description: "Открывает сундук без засады.",
-    basePrice: 35,
-    icon: "key",
-    effect: { kind: "key", amount: 1 },
-  },
-  {
-    id: "rune",
-    name: "Случайная руна",
-    description: "Случайная руна (только если есть слот < 3).",
-    basePrice: 80,
-    icon: "rune",
-    effect: { kind: "rune" },
-  },
-  {
-    id: "whetstone",
-    name: "Точильный камень",
-    description: "+1 к урону красных матчей до конца забега.",
-    basePrice: 40,
-    icon: "whetstone",
-    effect: { kind: "redDamage", amount: 1 },
-  },
-  {
-    id: "giant_heart",
-    name: "Сердце гиганта",
-    description: "+10 к макс HP и лечение на 10.",
-    basePrice: 45,
-    icon: "heart",
-    effect: { kind: "maxHp", amount: 10 },
-  },
-  {
-    id: "regen",
-    name: "Регенерация",
-    description: "+1 HP за ход до конца забега (пассив).",
-    basePrice: 40,
-    icon: "regen",
-    effect: { kind: "regen", amount: 1 },
-  },
+  { id: "potion_heal", name: "Зелье лечения", description: "+30 HP немедленно (вне боя, без капа).", basePrice: 25, icon: "heart", effect: { kind: "heal", amount: 30 } },
+  { id: "potion_shield", name: "Зелье щита", description: "+20 щит в начале следующего боя (кап 50).", basePrice: 35, icon: "shield", effect: { kind: "shield", amount: 20 } },
+  { id: "potion_rage", name: "Зелье ярости", description: "+40 ярость в начале следующего боя (кап 60).", basePrice: 30, icon: "rage", effect: { kind: "rage", amount: 40 } },
+  { id: "key", name: "Ключ", description: "Открывает сундук без засады.", basePrice: 40, icon: "key", effect: { kind: "key", amount: 1 } },
+  { id: "rune", name: "Случайная руна", description: "Случайная руна (только если есть слот < 3).", basePrice: 100, icon: "rune", effect: { kind: "rune" } },
+  { id: "whetstone", name: "Точильный камень", description: "+1 к урону красных матчей до конца забега.", basePrice: 50, icon: "whetstone", effect: { kind: "redDamage", amount: 1 } },
+  { id: "giant_heart", name: "Сердце гиганта", description: "+10 к макс HP и лечение на 10.", basePrice: 55, icon: "heart", effect: { kind: "maxHp", amount: 10 } },
+  { id: "regen", name: "Регенерация", description: "+1 HP за ход до конца забега (пассив).", basePrice: 45, icon: "regen", effect: { kind: "regen", amount: 1 } },
 ];
 
 export interface ShopOffer {
   def: ShopItemDef;
-  price: number; // цена с наценкой (+20%)
-  discounted: boolean; // есть скидка -20%
-  originalPrice?: number; // цена до скидки
+  price: number;
+  discounted: boolean;
+  originalPrice?: number;
   sold: boolean;
 }
 
-const MARKUP = 1.0; // без наценки (цены уже сбалансированы)
-const DISCOUNT = 0.8; // -20% при скидке
-const DISCOUNT_CHANCE = 0.1; // 10% шанс скидки на одну позицию
+const MARKUP = 1.0;
+const DISCOUNT = 0.8;
+const DISCOUNT_CHANCE = 0.1;
 const MAX_SAME_PER_RUN = 2;
 
 function randInt(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-/** Сгенерировать 3 товара для магазина. */
-export function generateShopOffers(
-  equippedRunesCount: number,
-  shopPurchases: Record<string, number>
-): ShopOffer[] {
-  // фильтруем руны если слотов нет
+export function generateShopOffers(equippedRunesCount: number, shopPurchases: Record<string, number>): ShopOffer[] {
   let pool = [...SHOP_POOL];
-  if (equippedRunesCount >= 3) {
-    pool = pool.filter((p) => p.id !== "rune");
-  }
-  // убираем товары, уже купленные MAX_SAME_PER_RUN раз
+  if (equippedRunesCount >= 3) pool = pool.filter((p) => p.id !== "rune");
   pool = pool.filter((p) => (shopPurchases[p.id] ?? 0) < MAX_SAME_PER_RUN);
 
   const offers: ShopOffer[] = [];
@@ -125,13 +56,7 @@ export function generateShopOffers(
     const baseWithMarkup = Math.round(def.basePrice * MARKUP);
     const discounted = Math.random() < DISCOUNT_CHANCE;
     const price = discounted ? Math.round(baseWithMarkup * DISCOUNT) : baseWithMarkup;
-    offers.push({
-      def,
-      price,
-      discounted,
-      originalPrice: discounted ? baseWithMarkup : undefined,
-      sold: false,
-    });
+    offers.push({ def, price, discounted, originalPrice: discounted ? baseWithMarkup : undefined, sold: false });
   }
   return offers;
 }
