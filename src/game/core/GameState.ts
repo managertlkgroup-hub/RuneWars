@@ -328,6 +328,7 @@ export const useGameStore = create<GameUIState>((set) => ({
 
   saveMeta: () => {
     const s = useGameStore.getState();
+    // сохранить в localStorage
     saveMeta({
       accountGold: s.accountGold,
       unlockedHeroes: s.unlockedHeroes,
@@ -342,6 +343,18 @@ export const useGameStore = create<GameUIState>((set) => ({
       equippedRunes: s.equippedRunes,
       settings: s.settings,
     });
+    // синхронизация с Yandex Player (throttled, no-op если SDK недоступен)
+    if (typeof window !== "undefined") {
+      import("./YandexSDK").then(({ getYandexSDK }) => {
+        getYandexSDK().savePlayerData({
+          accountGold: s.accountGold,
+          unlockedHeroes: s.unlockedHeroes,
+          activeHero: s.activeHero,
+          heroLevels: s.heroLevels,
+          heroXp: s.heroXp,
+        });
+      });
+    }
   },
 
   unlockHero: (id, cost) => {

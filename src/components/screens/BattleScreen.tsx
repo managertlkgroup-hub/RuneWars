@@ -16,6 +16,7 @@ import { generateDungeonMap } from "@/game/map/MapGenerator";
 import { dropBossLoot, dropEliteLoot } from "@/game/content/items";
 import { computePerkEffects } from "@/game/content/perks";
 import { computeCampUpgradeEffects } from "@/game/content/campUpgrades";
+import { getYandexSDK } from "@/game/core/YandexSDK";
 import EquipScreen from "@/components/screens/EquipScreen";
 import {
   BOARD_SIZE,
@@ -399,6 +400,8 @@ export default function BattleScreen() {
     }
     st.setPendingBattle(null);
     st.setScreen("map");
+    // полноэкранная реклама между этажами (throttled, no-op если SDK недоступен)
+    getYandexSDK().showFullscreenAdv();
   };
 
   // Поражение / сброс → возврат на карту
@@ -516,6 +519,24 @@ export default function BattleScreen() {
                 score={score}
                 onAction={handleClaimReward}
                 actionLabel="Забрать награду"
+                extraActions={
+                  <RuneButton
+                    variant="ghost"
+                    onClick={() => {
+                      getYandexSDK().showRewardedVideo(
+                        () => {
+                          // удвоить золото подземелья
+                          const st = useGameStore.getState();
+                          st.addDungeonGold(st.dungeonGold);
+                          getAudio().play("victory");
+                        }
+                      );
+                    }}
+                    className="text-[10px] py-2 px-4"
+                  >
+                    Смотреть рекламу x2 золота
+                  </RuneButton>
+                }
               />
             )}
             {phase === "defeat" && (
@@ -526,6 +547,25 @@ export default function BattleScreen() {
                 score={score}
                 onAction={handleQuickRestart}
                 actionLabel="Вернуться на карту"
+                extraActions={
+                  <RuneButton
+                    variant="gold"
+                    onClick={() => {
+                      getYandexSDK().showRewardedVideo(
+                        () => {
+                          // возрождение с 50% HP
+                          const st = useGameStore.getState();
+                          st.setHeroHp(Math.floor(st.heroMaxHp * 0.5));
+                          st.setScreen("map");
+                          getAudio().play("heal");
+                        }
+                      );
+                    }}
+                    className="text-[10px] py-2 px-4"
+                  >
+                    Возродиться (реклама)
+                  </RuneButton>
+                }
               />
             )}
             {phase === "reward" && (
@@ -685,6 +725,7 @@ function Overlay({
   score,
   onAction,
   actionLabel,
+  extraActions,
 }: {
   title: string;
   titleColor: string;
@@ -692,6 +733,7 @@ function Overlay({
   score: number;
   onAction: () => void;
   actionLabel: string;
+  extraActions?: React.ReactNode;
 }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/70 backdrop-blur-sm rounded-lg">
@@ -703,6 +745,7 @@ function Overlay({
       <RuneButton variant="gold" onClick={onAction} className="text-xs px-6 py-3">
         {actionLabel}
       </RuneButton>
+      {extraActions}
     </div>
   );
 }

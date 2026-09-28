@@ -9,6 +9,8 @@ import HeroSelectScreen from "@/components/screens/HeroSelectScreen";
 import PerkSelectScreen from "@/components/screens/PerkSelectScreen";
 import CampMetaScreen from "@/components/screens/CampMetaScreen";
 import { useGameStore } from "@/game/core/GameState";
+import { getYandexSDK } from "@/game/core/YandexSDK";
+import { getAudio } from "@/game/core/AudioEngine";
 
 export default function Home() {
   const [loaded, setLoaded] = useState(false);
@@ -17,20 +19,68 @@ export default function Home() {
   const setDebugReady = useGameStore((s) => s.setDebugReady);
 
   useEffect(() => {
-    // инициализация + отключение контекстного меню
+    // отключение контекстного меню (требование Яндекса)
     const prevent = (e: MouseEvent) => e.preventDefault();
     window.addEventListener("contextmenu", prevent);
-    const t = setTimeout(() => {
+
+    // expose audio engine для blur/focus обработчика SDK
+    if (typeof window !== "undefined") {
+      (window as unknown as { __audioEngine?: typeof audioEngine }).__audioEngine = audioEngine;
+    }
+
+    // setup blur/focus аудио пауза (требование Яндекса 8.4)
+    const sdk = getYandexSDK();
+    sdk.setupBlurFocus();
+
+    const t = setTimeout(async () => {
       setLoaded(true);
       setScreen("map");
+
+      // Yandex SDK: инициализация
+      await sdk.init();
+
+      // LoadingAPI.ready() — игра готова, игрок может начать
+      sdk.loadingReady();
+
+      // Game Ready индикатор (90с)
       setDebugReady(true);
       setTimeout(() => setDebugReady(false), 90000);
+
+      // автоопределение языка
+      const lang = sdk.getLang();
+      console.log("[YandexSDK] language:", lang);
+
+      // синхронизация Player данных (если доступно)
+      try {
+        const playerData = await sdk.loadPlayerData([
+          "accountGold",
+          "heroLevels",
+          "unlockedHeroes",
+        ]);
+        if (playerData) {
+          const st = useGameStore.getState();
+          // если Player имеет данные — загрузить их (приоритет над localStorage)
+          if (playerData.accountGold !== undefined) {
+            const playerGold = Number(playerData.accountGold) || 0;
+            const localGold = st.accountGold;
+            // взять максимум (в случае конфликта)
+            if (playerGold > localGold) {
+              st.addGold(playerGold - localGold);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[YandexSDK] player data sync failed", e);
+      }
     }, 600);
+
     return () => {
       window.removeEventListener("contextmenu", prevent);
       clearTimeout(t);
     };
   }, [setScreen, setDebugReady]);
+
+  const audioEngine = getAudio();
 
   if (!loaded) {
     return (
@@ -85,7 +135,6 @@ export default function Home() {
         </div>
       )}
       {(screen === "reward" || screen === "victory" || screen === "defeat" || screen === "nodeAction") && (
-        // эти экраны рендерятся как overlay внутри BattleScreen/MapScreen; fallback на map
         <MapScreen />
       )}
     </main>

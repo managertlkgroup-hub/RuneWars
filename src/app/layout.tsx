@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Press_Start_2P, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -41,6 +42,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
+      <head>
+        {/* Yandex Games SDK — загрузка скрипта (в dev может не загрузиться, fallback в коде) */}
+        <Script
+          src="https://yandex.ru/games/sdk/v2"
+          strategy="afterInteractive"
+        />
+      </head>
       <body
         className={`${pressStart2P.variable} ${inter.variable} antialiased bg-rune-bg text-rune-fg`}
         style={{ overflow: "hidden" }}
