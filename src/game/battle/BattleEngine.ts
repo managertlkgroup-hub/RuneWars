@@ -255,7 +255,7 @@ export class BattleEngine {
           this.emit({ type: "playerDamage", amount: applied, crit: rageStrike, dodged: false });
           // руна Кузнец: бомба на красном 5+
           const smith = hero.getRune("smith");
-          const smithThreshold = smith.level === 1 ? 5 : smith.level === 2 ? 4 : 3;
+          const smithThreshold = smith ? (smith.level === 1 ? 5 : smith.level === 2 ? 4 : 3) : 5;
           if (smith && smith.canUse() && g.length >= smithThreshold && smith.bombsThisTurn < 1) {
             this.triggerBomb(g);
             smith.markUsed();

@@ -25,8 +25,17 @@ export class RuneState {
     return this.def.id;
   }
 
-  /** Эффективная сила: ур.1 = base, ур.2 = base×1.5, ур.3 = base×2.0 (масштаб бонуса, не базы). */
+  /**
+   * Эффективная сила с масштабом по уровню.
+   * - power >= 1 (множитель): ур.1 = power, ур.2 = 1 + (power-1)×1.5, ур.3 = 1 + (power-1)×2
+   *   пример fire 1.5 → 1.5 / 1.75 / 2.0; wrath 2.0 → 2.0 / 2.5 / 3.0
+   * - power <  1 (доля):  ур.1 = power, ур.2 = power×1.5, ур.3 = power×2
+   *   пример vampire 0.2 → 0.2 / 0.3 / 0.4; guardian 0.5 → 0.5 / 0.75 / 1.0
+   */
   get effectivePower(): number {
+    if (this.def.power < 1) {
+      return this.def.power * (1 + (this.level - 1) * 0.5);
+    }
     const baseBonus = this.def.power - 1; // бонус над единицей
     const scaledBonus = baseBonus * (1 + (this.level - 1) * 0.5);
     return 1 + scaledBonus;
