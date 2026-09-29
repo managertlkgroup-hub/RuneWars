@@ -12,7 +12,7 @@ export interface MetaState {
   heroPrestige: Record<string, number>;
   campUpgrades: Record<string, number>; // id → уровень/количество
   pityCounter: number;
-  ownedRunes: { id: string; level: number; rarity: string }[];
+  ownedRunes: { id: string; level: number; copies: number; rarity: string }[];
   equippedRunes: string[];
   inventory: { uid: string; category: string; subType: string; name: string; rarity: string; baseValue: number; description: string; bonus: Record<string, unknown> }[];
   equippedItems: { weapon: unknown; armor: unknown; amulet: unknown };
@@ -42,7 +42,15 @@ export function loadMeta(): Partial<MetaState> {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT, ...parsed };
+    const merged = { ...DEFAULT, ...parsed };
+    // миграция: добавить copies=1 если отсутствует (старый формат)
+    if (merged.ownedRunes) {
+      merged.ownedRunes = merged.ownedRunes.map((r: { id: string; level: number; copies?: number; rarity: string }) => ({
+        ...r,
+        copies: r.copies ?? 1,
+      }));
+    }
+    return merged;
   } catch {
     return {};
   }

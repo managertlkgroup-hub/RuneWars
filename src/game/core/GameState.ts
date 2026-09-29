@@ -24,6 +24,7 @@ export type ScreenName =
 export interface OwnedRune {
   id: RuneId;
   level: number; // 1..3
+  copies: number; // сколько копий на текущем уровне (3 → можно улучшить)
   rarity: RuneRarity;
 }
 
@@ -211,18 +212,31 @@ export const useGameStore = create<GameUIState>((set) => ({
     set((s) => {
       const existing = s.ownedRunes.find((x) => x.id === r.id);
       if (existing) {
-        // если уже есть — повышаем уровень (до 3)
-        if (existing.level < 3) existing.level++;
-        return { ownedRunes: [...s.ownedRunes] };
+        // если уже есть — добавляем копию (не повышаем уровень автоматически)
+        return {
+          ownedRunes: s.ownedRunes.map((x) =>
+            x.id === r.id ? { ...x, copies: x.copies + 1 } : x
+          ),
+        };
       }
-      return { ownedRunes: [...s.ownedRunes, r] };
+      // новая руна — level 1, copies 1
+      return { ownedRunes: [...s.ownedRunes, { ...r, level: 1, copies: 1 }] };
     }),
   upgradeRune: (id) =>
-    set((s) => ({
-      ownedRunes: s.ownedRunes.map((r) =>
-        r.id === id && r.level < 3 ? { ...r, level: r.level + 1 } : r
-      ),
-    })),
+    set((s) => {
+      const rune = s.ownedRunes.find((r) => r.id === id);
+      if (!rune || rune.copies < 3 || rune.level >= 3) return {};
+      const cost = rune.level === 1 ? 200 : 500;
+      if (s.accountGold < cost) return {};
+      return {
+        accountGold: s.accountGold - cost,
+        ownedRunes: s.ownedRunes.map((r) =>
+          r.id === id
+            ? { ...r, level: r.level + 1, copies: r.copies - 3 }
+            : r
+        ),
+      };
+    }),
   setEquippedRunes: (equippedRunes) => set({ equippedRunes: equippedRunes.slice(0, 3) }),
   setLastRewardRunes: (lastRewardRunes) => set({ lastRewardRunes }),
 

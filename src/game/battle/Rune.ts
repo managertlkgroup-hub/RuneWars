@@ -25,9 +25,11 @@ export class RuneState {
     return this.def.id;
   }
 
-  /** Эффективная сила с учётом уровня (×1, ×1.1, ×1.2). */
+  /** Эффективная сила: ур.1 = base, ур.2 = base×1.5, ур.3 = base×2.0 (масштаб бонуса, не базы). */
   get effectivePower(): number {
-    return this.def.power * (1 + (this.level - 1) * 0.15);
+    const baseBonus = this.def.power - 1; // бонус над единицей
+    const scaledBonus = baseBonus * (1 + (this.level - 1) * 0.5);
+    return 1 + scaledBonus;
   }
 
   canUse(): boolean {

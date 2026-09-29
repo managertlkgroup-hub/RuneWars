@@ -488,11 +488,16 @@ export default function BattleScreen() {
                   const st = battle.hero.getRune(d.id);
                   const status = st ? runeStatusText(d.id, st, battle) : null;
                   const ready = st ? st.canUse() : false;
+                  const runeDef = RUNES.find(r => r.id === d.id);
+                  const ownedRune = useGameStore.getState().ownedRunes.find(r => r.id === d.id);
+                  const runeLvl = ownedRune?.level ?? 1;
                   return (
                     <div key={d.id} className="flex items-center gap-2 px-1 py-0.5 rounded" style={{ background: ready ? "rgba(201,162,39,0.08)" : "transparent" }}>
                       <RuneIcon rune={d.id} size={26} />
                       <div className="flex flex-col flex-1 min-w-0">
-                        <span className="font-pixel text-[7px] text-rune-text leading-tight">{d.name}</span>
+                        <span className="font-pixel text-[7px] text-rune-text leading-tight">
+                          {d.name} {runeLvl > 1 && <span className="text-rune-gold">ур.{runeLvl}</span>}
+                        </span>
                         {status && (
                           <span className={`font-body text-[8px] leading-tight ${status.accent ?? "text-rune-muted"}`}>{status.text}</span>
                         )}
