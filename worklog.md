@@ -771,3 +771,37 @@ Work Log:
 - PerkSelectScreen: SVG-иконки (сердце, меч, лист) вместо цифр 1/2/3 ✓
 - BattleScreen HUD: «Огонь ур.2» в панели рун ✓
 - out/ = 5.9 МБ, lint чистый, dev:200
+
+---
+Task ID: rune-formula-fix + death-test
+Agent: webDevReview (cron)
+Task: RUNE WARS — формула руны в бою + смерть героя + кнопка улучшения
+
+Work Log:
+КРИТИЧЕСКИЙ БАГ — формула руны НЕ работала в бою:
+- Hero.equipRunes создавал RuneState с level=1 ВСЕГДА (игнорировал уровень руны из мета).
+- Fix: equipRunes принимает levels?: number[], передаёт в RuneState(def, level).
+- BattleEngine конструктор: equippedRunes тип изменён на {def:RuneDef, level:number}[]. Передаёт runeLevels в equipRunes.
+- makeBattle: читает owned.level из st.ownedRunes, передаёт {def, level} в BattleEngine.
+- Также: equippedRunes и ownedRunes не загружались из localStorage при старте (initialized as []). Fix: _meta.equippedRunes ?? [] и _meta.ownedRunes ?? [].
+- upgradeRune: добавлен saveMeta() после улучшения (раньше не сохранялся).
+- Верификация: fire level 2 → runeLevel:2, effectivePower:1.75 в бою ✓ (было 1.5 на ур.1).
+
+Кнопка «Улучшить» — всегда видна:
+- При copies>=3: активная кнопка «★ Улучшить (200з)».
+- При copies<3: серая disabled кнопка «Улучшить (N/3)» + toast при клике «Недостаточно копий (у вас N)».
+- При level>=3: «МАКС» золотым.
+
+Сложность — герой может умереть:
+- Лечение уменьшено: heal [0,0,0,1,2,3,4,5] (было [0,0,0,2,3,4,5,6]).
+- Кости Древних враги усилены: skeleton_warrior 90HP/18atk (было 75/12), skeleton_archer 80/20, skeleton_mage 75/22, bone_slime 100/15, boss lich 280/28.
+- Тест: герой 1 уровня, 15 HP, Кости Древних → **ПОРАЖЕНИЕ** (heroHp=0, enemyHp=80) ✓.
+- VLM: «ПОРАЖЕНИЕ видно, красный шрифт, «Герой пал в бою», очки 127.5, кнопки Вернуться/Возродиться».
+
+Верификация:
+- fire ур.2: runeLevel=2, effectivePower=1.75 в бою ✓
+- ownedRunes + equippedRunes загружаются из localStorage ✓
+- upgradeRune вызывает saveMeta ✓
+- Кнопка «Улучшить» всегда видна (disabled при <3 копий + подпись N/3) ✓
+- Герой умирает в Костях Древних на 1 уровне ✓
+- out/ = 5.9 МБ, lint чистый, dev:200

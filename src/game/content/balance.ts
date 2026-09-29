@@ -41,7 +41,7 @@ export function cascadeBonus(cascadeLevel: number): number {
 export const GEM_BASE = {
   damage: [0, 0, 0, 8, 12, 16, 20, 24],
   shield: [0, 0, 0, 4, 6, 8, 10, 12],
-  heal: [0, 0, 0, 2, 3, 4, 5, 6],
+  heal: [0, 0, 0, 1, 2, 3, 4, 5],
   rage: [0, 0, 0, 6, 9, 12, 15, 18],
 };
 

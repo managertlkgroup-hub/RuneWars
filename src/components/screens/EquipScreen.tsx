@@ -171,15 +171,33 @@ export default function EquipScreen({ onStart }: { onStart: () => void }) {
                     <span className="font-pixel text-[7px] text-rune-muted text-center leading-tight">закрыто</span>
                   )}
                 </button>
-                {/* кнопка улучшить */}
-                {owned && canUpgrade && (
-                  <RuneButton
-                    variant="gold"
-                    onClick={() => handleUpgrade(owned)}
-                    className="text-[8px] py-0.5 px-1 mt-0.5 w-full"
-                  >
-                    Улучшить ({upgradeCost}з)
-                  </RuneButton>
+                {/* кнопка улучшить — ВСЕГДА видна */}
+                {owned && lvl < 3 && (
+                  <div className="w-full mt-0.5">
+                    {canUpgrade ? (
+                      <RuneButton
+                        variant="gold"
+                        onClick={() => handleUpgrade(owned)}
+                        className="text-[7px] py-0.5 px-1 w-full"
+                      >
+                        ★ Улучшить ({upgradeCost}з)
+                      </RuneButton>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (owned.copies < 3) {
+                            toast({ title: "Недостаточно копий", description: `Нужно 3 копии (у вас ${owned.copies}).`, variant: "destructive" });
+                          } else if (accountGold < upgradeCost) {
+                            toast({ title: "Недостаточно золота", description: `Нужно ${upgradeCost} золота.`, variant: "destructive" });
+                          }
+                        }}
+                        disabled
+                        className="text-[7px] py-0.5 px-1 w-full rounded border-2 border-[#3a2a5a] bg-[#1f1638]/50 text-rune-muted cursor-not-allowed"
+                      >
+                        Улучшить ({owned.copies}/3)
+                      </button>
+                    )}
+                  </div>
                 )}
                 {owned && lvl >= 3 && (
                   <span className="font-pixel text-[7px] text-rune-gold-light">МАКС</span>

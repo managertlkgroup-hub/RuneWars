@@ -48,9 +48,9 @@ export class Hero {
     this.rageStrikeCooldown = 0;
   }
 
-  /** Экипировать руны (до 3). */
-  equipRunes(defs: RuneDef[]): void {
-    this.runes = defs.map((d) => new RuneState(d, 1));
+  /** Экипировать руны (до 3) с уровнем. */
+  equipRunes(defs: RuneDef[], levels?: number[]): void {
+    this.runes = defs.map((d, i) => new RuneState(d, levels?.[i] ?? 1));
   }
 
   /** Экипировать предметы — применяет бонусы к статам. */

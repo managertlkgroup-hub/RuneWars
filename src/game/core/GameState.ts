@@ -166,8 +166,8 @@ export const useGameStore = create<GameUIState>((set) => ({
   debugReady: false,
 
   gold: 0,
-  ownedRunes: [],
-  equippedRunes: [],
+  ownedRunes: _meta.ownedRunes ?? [],
+  equippedRunes: _meta.equippedRunes ?? [],
   lastRewardRunes: [],
   currentMap: null,
   currentDungeonId: 1,
@@ -222,7 +222,7 @@ export const useGameStore = create<GameUIState>((set) => ({
       // новая руна — level 1, copies 1
       return { ownedRunes: [...s.ownedRunes, { ...r, level: 1, copies: 1 }] };
     }),
-  upgradeRune: (id) =>
+  upgradeRune: (id) => {
     set((s) => {
       const rune = s.ownedRunes.find((r) => r.id === id);
       if (!rune || rune.copies < 3 || rune.level >= 3) return {};
@@ -236,7 +236,9 @@ export const useGameStore = create<GameUIState>((set) => ({
             : r
         ),
       };
-    }),
+    });
+    useGameStore.getState().saveMeta();
+  },
   setEquippedRunes: (equippedRunes) => set({ equippedRunes: equippedRunes.slice(0, 3) }),
   setLastRewardRunes: (lastRewardRunes) => set({ lastRewardRunes }),
 

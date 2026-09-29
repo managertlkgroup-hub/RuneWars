@@ -61,8 +61,12 @@ function makeBattle(
     isBoss = Math.random() < 0.25;
   }
   const enemyDef = pickEnemyForFloor(dungeonId, floor, isBoss);
-  const runeDefs = equippedRunes.map((id) => getRune(id));
   const st = useGameStore.getState();
+  const runeDefs = equippedRunes.map((id) => {
+    const def = getRune(id);
+    const owned = st.ownedRunes.find(r => r.id === id);
+    return { def, level: owned?.level ?? 1 };
+  });
   // активный герой из мета-прогрессии
   const activeHeroDef = getHero(st.activeHero as HeroMechanicId);
   // эффекты перков
@@ -100,7 +104,7 @@ export default function BattleScreen() {
   const [particles] = useState(() => new ParticlePool());
   const equippedRunes = useGameStore((s) => s.equippedRunes);
   const pendingBattle = useGameStore((s) => s.pendingBattle);
-  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics, [], pendingBattle));
+  const [battle, setBattle] = useState<BattleEngine>(() => makeBattle(metrics, useGameStore.getState().equippedRunes, pendingBattle));
   const [snap, setSnap] = useState<BattleState | null>(() => battle.snapshot());
   const [phase, setPhase] = useState<Phase>("fighting");
   const [rewards, setRewards] = useState<RewardOption[]>([]);

@@ -80,7 +80,7 @@ export class BattleEngine {
     heroDef: HeroDef,
     enemyDef: EnemyDef,
     heroLevel = 1,
-    equippedRunes: RuneDef[] = [],
+    equippedRunes: { def: RuneDef; level: number }[] = [],
     metrics?: BoardEngine["metrics"],
     equippedItems?: { weapon: Item | null; armor: Item | null; amulet: Item | null },
     startHp?: number,
@@ -88,7 +88,10 @@ export class BattleEngine {
     perkEffects?: PerkEffects
   ) {
     this.hero = new Hero(heroDef, heroLevel);
-    this.hero.equipRunes(equippedRunes);
+    // передать уровни экипированных рун
+    const runeLevels = equippedRunes.map((r) => r.level);
+    const runeDefs = equippedRunes.map((r) => r.def);
+    this.hero.equipRunes(runeDefs, runeLevels);
     if (equippedItems) this.hero.equipItems(equippedItems);
     this.perkEffects = perkEffects ?? {};
     // перк-эффекты: +макс HP
