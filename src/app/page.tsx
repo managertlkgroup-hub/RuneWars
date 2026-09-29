@@ -43,6 +43,11 @@ export default function Home() {
       setLoaded(true);
       setScreen("map");
 
+      // тикер времени (каждые 60 сек)
+      setInterval(() => {
+        useGameStore.getState().tickPlayTime(60);
+      }, 60000);
+
       // Yandex SDK
       await sdk.init();
       sdk.loadingReady();

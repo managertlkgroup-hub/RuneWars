@@ -9,7 +9,7 @@ import { useGameStore } from "@/game/core/GameState";
 import { getAudio, getAudio as getAudioSingleton } from "@/game/core/AudioEngine";
 import { useToast } from "@/hooks/use-toast";
 
-type Tab = "heroes" | "upgrades" | "settings";
+type Tab = "heroes" | "upgrades" | "stats" | "settings";
 
 function HeroPortrait({ palette, size = 48 }: { palette: { body: string; accent: string; eye: string; cape: string }; size?: number }) {
   return (
@@ -102,6 +102,7 @@ export default function CampMetaScreen({ onClose }: { onClose: () => void }) {
       <div className="flex gap-1 w-full max-w-3xl">
         <RuneButton variant={tab === "heroes" ? "gold" : "ghost"} onClick={() => setTab("heroes")} className="text-[10px] flex-1">Герои</RuneButton>
         <RuneButton variant={tab === "upgrades" ? "gold" : "ghost"} onClick={() => setTab("upgrades")} className="text-[10px] flex-1">Улучшения</RuneButton>
+        <RuneButton variant={tab === "stats" ? "gold" : "ghost"} onClick={() => setTab("stats")} className="text-[10px] flex-1">Статистика</RuneButton>
         <RuneButton variant={tab === "settings" ? "gold" : "ghost"} onClick={() => setTab("settings")} className="text-[10px] flex-1">Настройки</RuneButton>
       </div>
 
@@ -197,6 +198,33 @@ export default function CampMetaScreen({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {tab === "stats" && (
+        <div className="w-full max-w-3xl">
+          <RunePanel>
+            <PanelTitle>Статистика</PanelTitle>
+            <div className="p-3 grid grid-cols-2 gap-2 font-body text-[11px]">
+              {(() => {
+                const s = useGameStore.getState().stats;
+                const min = Math.floor(s.playTimeSec / 60);
+                const runesMaxed = useGameStore.getState().ownedRunes.filter(r => r.level >= 3).length;
+                return (
+                  <>
+                    <StatRow label="Всего забегов" value={s.totalRuns} />
+                    <StatRow label="Побед" value={s.wins} />
+                    <StatRow label="Смертей" value={s.deaths} />
+                    <StatRow label="Убито врагов" value={s.enemiesKilled} />
+                    <StatRow label="Время в игре" value={`${min} мин`} />
+                    <StatRow label="Открыто героев" value={`${useGameStore.getState().unlockedHeroes.length}/6`} />
+                    <StatRow label="Рун ур.3" value={`${runesMaxed}/9`} />
+                    <StatRow label="Пройдено подземелий" value={`${s.maxDungeonUnlocked - 1}/5`} />
+                  </>
+                );
+              })()}
+            </div>
+          </RunePanel>
+        </div>
+      )}
+
       {tab === "settings" && (
         <div className="w-full max-w-3xl flex flex-col gap-3">
           <RunePanel>
@@ -224,6 +252,15 @@ export default function CampMetaScreen({ onClose }: { onClose: () => void }) {
           </RunePanel>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between p-1.5 rounded border border-[#3a2a5a]/40 bg-[#0a0718]/40">
+      <span className="text-rune-muted">{label}</span>
+      <span className="font-pixel text-[10px] text-rune-gold-light">{value}</span>
     </div>
   );
 }
