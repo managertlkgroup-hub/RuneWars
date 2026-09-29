@@ -27,6 +27,12 @@ export interface MetaState {
     maxDungeonUnlocked: number;
     dungeonRuns: Record<number, number>;
   };
+  // Дейли-награда (retention для Яндекс.Игр)
+  dailyReward: {
+    lastClaimTs: number; // timestamp последнего клейма (0 = никогда)
+    streak: number; // текущий стрик (дней подряд)
+    totalClaimed: number; // всего клеймов за всё время
+  };
 }
 
 const DEFAULT: MetaState = {
@@ -53,6 +59,11 @@ const DEFAULT: MetaState = {
     maxDungeonUnlocked: 1,
     dungeonRuns: {},
   },
+  dailyReward: {
+    lastClaimTs: 0,
+    streak: 0,
+    totalClaimed: 0,
+  },
 };
 
 export function loadMeta(): Partial<MetaState> {
@@ -68,6 +79,10 @@ export function loadMeta(): Partial<MetaState> {
         ...r,
         copies: r.copies ?? 1,
       }));
+    }
+    // миграция: добавить dailyReward если отсутствует (старый формат)
+    if (!merged.dailyReward) {
+      merged.dailyReward = { ...DEFAULT.dailyReward };
     }
     return merged;
   } catch {

@@ -19,7 +19,8 @@ export type ScreenName =
   | "camp"
   | "nodeAction"
   | "victory"
-  | "defeat";
+  | "defeat"
+  | "dailyReward";
 
 export interface OwnedRune {
   id: RuneId;
@@ -109,6 +110,13 @@ interface GameUIState {
     maxDungeonUnlocked: number;
     dungeonRuns: Record<number, number>;
   };
+  // Дейли-награда
+  dailyReward: {
+    lastClaimTs: number;
+    streak: number;
+    totalClaimed: number;
+  };
+  dailyRewardVisible: boolean; // показать ли модалку при запуске (только если есть клейм)
 
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
@@ -161,6 +169,11 @@ interface GameUIState {
   setSettings: (s: Partial<MetaState["settings"]>) => void;
   recordBattleResult: (won: boolean, enemiesKilled: number, dungeonId: number, isBoss: boolean) => void;
   tickPlayTime: (sec: number) => void;
+
+  // Дейли-награда
+  canClaimDaily: () => boolean;
+  claimDailyReward: () => { gold: number; streak: number; day: number } | null;
+  setDailyRewardVisible: (v: boolean) => void;
 }
 
 // загрузка мета-прогрессии (один раз)
@@ -214,6 +227,8 @@ export const useGameStore = create<GameUIState>((set) => ({
     maxDungeonUnlocked: 1,
     dungeonRuns: {},
   },
+  dailyReward: _meta.dailyReward ?? { lastClaimTs: 0, streak: 0, totalClaimed: 0 },
+  dailyRewardVisible: false,
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),

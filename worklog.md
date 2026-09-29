@@ -948,3 +948,92 @@ Stage Summary:
 - Исправлены 2 критических бага: формула effectivePower для power<1 (Vampire/Guardian не работали на ур.2/3) + TypeError при красном матче без экипированного Кузнеца (крашил игру).
 - Тест-скрипт `scripts/test-runes.ts` останется в репо как регрессионный — запускать после любых правок рун.
 - Линт чист, dev-сервер работает.
+
+---
+Task ID: cron-review-2 (webDevReview)
+Agent: webDevReview (cron, job_id 423362)
+Task: Периодическая проверка: QA через agent-browser + правки багов/стилей/фич.
+
+Оценка состояния (до правок):
+- Регрессионный тест `scripts/test-runes.ts`: 57/57 PASS (формула effectivePower и smith guard из предыдущей итерации держатся).
+- Lint: чистый. Dev server: GET / 200.
+- Yandex SDK: ожидаемые ошибки "No parent to post message" вне iframe — не блокируют.
+- Визуальный QA (VLM через z-ai vision):
+  * Боевой экран (desktop): корректный — HP/щит/ярость, доска 7×7, руны.
+  * Боевой экран (mobile): КРИТИЧЕСКИЙ ПРОБЕЛ — левая HUD-панель `hidden lg:flex`, на телефоне не видны HP/Щит/Ярость/Атака врага.
+  * Кнопка mute отсутствовала.
+  * Статусы рун в боевой HUD показывали хардкоженный текст (без уровня).
+
+Найденные баги и пробелы:
+1. **runeStatusText hardcoded** (BattleScreen.tsx): 4 руны показывали статичный текст, игнорируя st.level:
+   - chaos: `5 - (battle.turn % 5)` → всегда 5 (нужно 5/4/3)
+   - smith: `"Бомба готова (5+)"` → всегда 5+ (нужно 5/4/3)
+   - wrath: `"Ярость ×2, ульта ×3"` → всегда ур.1 (нужно ×2/2.5/3 ульта ×3/3.5/4)
+   - sage: `"+1 к длине"` → всегда +1 (нужно +1/+2/+3)
+   - vampire/guardian/fire: показывали только процент, без cap/уровня
+2. **Mobile UX gap**: `hidden lg:flex` на левой HUD-панели — на телефоне игрок не видит HP/щит/ярость/атаку врага во время боя. Главное подземелье игры = Яндекс.Игры = мобайл.
+3. **No quick mute**: нет быстрого переключателя звука в бою.
+4. **No COMBO overlay**: каскады показывали только частицы + счётчик в правой панели — нет большого анимированного «COMBO ×N» поверх доски (стандартная Match-3 полировка).
+
+Что сделано в этой итерации:
+
+A. **runeStatusText → dynamic по st.level** (BattleScreen.tsx):
+   - chaos: `threshold = st.level===1?5:st.level===2?4:3`, `turnsToChaos = (threshold - turn%threshold)%threshold || threshold`, текст «Перекраска через N х. (ур.X)»
+   - smith: `threshold` по уровню, текст «Бомба готова (N+)»
+   - wrath: `rageMult = st.effectivePower` (2/2.5/3), `ulta = hero.rageStrikeMultiplier()` (3/3.5/4), текст «Ярость ×N, ульта ×M (ур.X)»
+   - sage: `bonus = st.level===1?1:2:3`, текст «+N к длине (множитель)»
+   - vampire: добавлен cap «+X% урона → HP (cap N/ход)» где cap = 5/8/12
+   - guardian: «X% щита переходит (ур.Y)»
+   - fire: «+X% к красным 3-4 (ур.Y)»
+   - ice: оставлен без изменений (КД/заморозка и так динамические)
+
+B. **Mobile compact HUD** (BattleScreen.tsx, новый компонент `MobileStat`):
+   - Сетка 2×2 (lg:hidden), видна только на экранах <1024px
+   - 4 плитки: HP (Heart), Щит (Shield), Ярость (Zap, с pulse при ульте готовой), Атака врага (Clock, красная при ≤1)
+   - Каждая плитка: иконка + label + value + градиентный прогресс-бар
+   - Атака врага: другой цвет если заморожен (синий) или ≤1 ход (красный)
+
+C. **Mute toggle button** (BattleScreen.tsx):
+   - Volume2/VolumeX иконка в правом верхнем углу (рядом с золотом)
+   - Состояние `isMuted`, метод `toggleMute` дёргает `getAudio().setMuted(next)`
+   - Стиль: rounded border-[#3a2a5a]/60, hover:text-rune-gold
+
+D. **COMBO ×N overlay** (BattleScreen.tsx + globals.css):
+   - При событии matchVfx с cascadeLevel >= 1 → setComboBump({level: cascadeLevel+1, ts})
+   - Overlay: pointer-events-none absolute inset-0 flex items-center justify-center
+   - Текст: font-pixel text-rune-warm text-glow-gold, размер `clamp(28px, ${4 + level*2}vw, ${48 + level*12}px)`
+   - Анимация `animate-combo-pop` (новый keyframe в globals.css):
+     - 0%: scale(0.4) rotate(-6deg), opacity 0
+     - 20%: scale(1.25) rotate(2deg), opacity 1
+     - 40%: scale(1) rotate(-1deg), opacity 1
+     - 70%: scale(1.05) opacity 0.9
+     - 100%: scale(1.4) translateY(-30px), opacity 0
+   - Авто-очистка через 1.2с (useEffect setTimeout)
+   - Также добавлен кастомный scrollbar `.rune-scroll` для длинных списков
+
+Верификация (VLM-проверки через z-ai vision):
+- Mobile (iPhone 14): ✓ 4 плитки HUD видны (HP/Щит/Ярость/Атака с прогресс-барами), ✓ кристаллы 7×7, ✓ кнопка mute в правом верхнем, ✓ нет дефектов, ✓ layout компактный для телефона
+- Desktop: ✓ левая панель героя с HP/Щит/Ярость/Ход/XP/Атака + руны (0/3), ✓ mute-кнопка, ✓ доска 7×7
+- COMBO ×3: при подаче события match cascadeLevel=2 → overlay показал «COMBO ×3» (cascadeLevel+1) — VLM подтвердил
+- runeStatusText Хаос ур.2 (после force re-render через turnEnd): «Перекраска через 3 х. (ур.2)» — порог 4 (level 2), turn 1 → 3 хода до триггера ✓
+
+Регрессия после правок:
+- `npx tsx scripts/test-runes.ts`: 57/57 PASS (без изменений, формулы в BattleEngine не трогались)
+- `bun run lint`: чистый
+- Dev server: GET / 200, no runtime errors в логах
+- 18 скриншотов сохранены в `download/qa-round-2/` (01-loading, 02-after-start, 03-battle, 04-mobile-map, 05-mobile-battle, 06-battle-after-nav, 07-mobile-battle-hud, 08-desktop-battle, 09-desktop-battle2, 10-desktop-battle3, 11-combo-overlay, 12-combo-overlay2, 13-rune-status, 14-fresh-battle-chaos, 15-chaos-rune-equipped, 16-chaos-rune-fresh, 17-chaos-level-2, 18-chaos-l2-after-render)
+
+Stage Summary:
+- Исправлено 4 hardcoded текста в `runeStatusText` (chaos/smith/wrath/sage) — теперь все 9 рун показывают динамический статус по уровню в боевой HUD.
+- Добавлена мобильная HUD-сетка (4 плитки с прогресс-барами) для экранов <lg — критично для Яндекс.Игр (мобайл-платформа).
+- Добавлена кнопка mute в правом верхнем углу (Volume2/VolumeX, lucide-react).
+- Добавлен анимированный COMBO ×N overlay с pop+scale+fade анимацией 1.2с.
+- Добавлен кастомный rune-scroll scrollbar для длинных списков.
+- Все регрессионные тесты (57) проходят, lint чист, dev-сервер работает.
+
+Нерешённые вопросы / приоритеты для следующей итерации:
+- Не сделана полноценная тип-туториала для нового игрока (как swap, как цвета работают) — только статичные подсказки в правой панели.
+- Rewarded video ×2 золота сейчас работает только в Yandex SDK iframe — в превью панели кнопка есть, но видео не запустится. Это OK для прода.
+- Босс-файты не имеют уникальных VFX (только крупнее спрайт + HP-бар) — можно добавить фазовые переходы или AOЕ-атаки.
+- Нет «дейли-награды» (возврат на следующий день даёт бонус) — стандартная фича для Yandex.Games retention.
+- На очень низких мобайл-разрешениях (например Galaxy Fold 280px wide) mobile HUD может стать тесным — стоит проверить через `agent-browser set viewport 280 600`.

@@ -11,6 +11,7 @@ import { getAudio } from "@/game/core/AudioEngine";
 import { RunePanel, PanelTitle } from "@/components/ui/RunePanel";
 import { RuneButton } from "@/components/ui/RuneButton";
 import { RuneIcon } from "@/components/icons/RuneIcons";
+import { Volume2, VolumeX, Shield, Heart, Zap, Clock } from "lucide-react";
 import RewardScreen, { generateRewards, type RewardOption } from "@/components/screens/RewardScreen";
 import { generateDungeonMap } from "@/game/map/MapGenerator";
 import { dropBossLoot, dropEliteLoot } from "@/game/content/items";
@@ -110,6 +111,8 @@ export default function BattleScreen() {
   const [rewards, setRewards] = useState<RewardOption[]>([]);
   const [, forceTick] = useState(0);
   const [rewardedUsed, setRewardedUsed] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [comboBump, setComboBump] = useState<{ level: number; ts: number } | null>(null);
 
   const boardRendererRef = useRef<BoardRenderer | null>(null);
   const charRendererRef = useRef<CharacterRenderer | null>(null);
@@ -134,6 +137,19 @@ export default function BattleScreen() {
     setPhase(p);
   }, []);
 
+  // Авто-очистка COMBO-оверлея (через 1.2 сек после последнего каскада)
+  useEffect(() => {
+    if (!comboBump) return;
+    const t = setTimeout(() => setComboBump(null), 1200);
+    return () => clearTimeout(t);
+  }, [comboBump]);
+
+  const toggleMute = useCallback(() => {
+    const next = !isMuted;
+    setIsMuted(next);
+    getAudio().setMuted(next);
+  }, [isMuted]);
+
   // Единый обработчик событий боя
   const handleBattleEvent = useCallback(
     (e: BattleEvent) => {
@@ -154,6 +170,10 @@ export default function BattleScreen() {
         incMatches(e.groups.length);
         setCombo(e.cascadeLevel + 1);
         bumpMaxCombo(e.cascadeLevel + 1);
+        // Триггер DOM-оверлея «COMBO ×N» поверх доски (на каскадах)
+        if (e.cascadeLevel >= 1) {
+          setComboBump({ level: e.cascadeLevel + 1, ts: Date.now() });
+        }
         const soundMap = ["matchRed", "matchBlue", "matchGreen", "matchYellow"] as const;
         audio.play(soundMap[e.groups[0]?.color ?? 0]);
         if (e.cascadeLevel >= 1) {
@@ -442,7 +462,7 @@ export default function BattleScreen() {
       />
 
       <div className="relative z-10 w-full max-w-[1280px] px-2 sm:px-4 py-2 flex flex-col items-center gap-2">
-        {/* Заголовок + этаж + золото */}
+        {/* Заголовок + этаж + золото + mute */}
         <div className="w-full flex items-center justify-between gap-2">
           <div className="font-pixel text-rune-gold text-glow-gold text-[10px] sm:text-sm uppercase tracking-widest">
             RUNE WARS
@@ -455,7 +475,49 @@ export default function BattleScreen() {
             <span className="font-pixel text-[8px] sm:text-[10px] text-rune-muted uppercase">
               {snap?.enemyIsBoss ? "БОСС" : "Бой"} · {snap?.enemyName ?? ""}
             </span>
+            {/* Mute toggle */}
+            <button
+              onClick={toggleMute}
+              aria-label={isMuted ? "Включить звук" : "Выключить звук"}
+              title={isMuted ? "Включить звук" : "Выключить звук"}
+              className="text-rune-muted hover:text-rune-gold transition-colors w-7 h-7 flex items-center justify-center rounded border border-[#3a2a5a]/60 hover:border-rune-gold/60"
+            >
+              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
           </div>
+        </div>
+
+        {/* Мобильный компактный HUD: HP / Щит / Ярость / Ход / Атака врага (только <lg) */}
+        <div className="lg:hidden w-full grid grid-cols-2 gap-1.5 font-pixel text-[8px]">
+          <MobileStat
+            icon={<Heart size={11} className="text-rune-red" />}
+            label="HP"
+            value={`${snap?.heroHp ?? 0}/${snap?.heroMaxHp ?? 0}`}
+            barPct={snap ? (snap.heroHp / Math.max(1, snap.heroMaxHp)) * 100 : 0}
+            barColor="from-rune-red to-rune-warm"
+          />
+          <MobileStat
+            icon={<Shield size={11} className="text-rune-blue" />}
+            label="Щит"
+            value={`${snap?.heroShield ?? 0}`}
+            barPct={snap ? (snap.heroShield / 50) * 100 : 0}
+            barColor="from-rune-blue to-rune-green"
+          />
+          <MobileStat
+            icon={<Zap size={11} className="text-rune-yellow" />}
+            label="Ярость"
+            value={`${snap?.heroRage ?? 0}/60`}
+            barPct={snap ? (snap.heroRage / 60) * 100 : 0}
+            barColor="from-rune-yellow to-rune-warm"
+            pulse={snap?.heroRageStrikeReady}
+          />
+          <MobileStat
+            icon={<Clock size={11} className={snap?.enemyFrozen ? "text-rune-blue" : snap && snap.enemyAttackIn <= 1 ? "text-rune-red" : "text-rune-muted"} />}
+            label={snap?.enemyFrozen ? "Враг" : "Атака"}
+            value={snap?.enemyFrozen ? "Лёд" : `через ${snap?.enemyAttackIn ?? 0}х`}
+            barPct={snap ? Math.max(0, (4 - (snap.enemyAttackIn ?? 0)) / 3 * 100) : 0}
+            barColor={snap?.enemyFrozen ? "from-rune-blue to-rune-blue" : "from-rune-red to-rune-warm"}
+          />
         </div>
 
         {/* Поле + боковые HUD */}
@@ -528,6 +590,24 @@ export default function BattleScreen() {
               onClick={handleCanvasClick}
               className="w-full h-full rounded-lg border-2 border-[#3a2a5a] shadow-[0_0_40px_rgba(0,0,0,0.8)] cursor-pointer touch-none"
             />
+
+            {/* COMBO ×N overlay — показывается на каскадах */}
+            {comboBump && (
+              <div
+                key={comboBump.ts}
+                className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
+              >
+                <div
+                  className="font-pixel text-rune-warm text-glow-gold animate-combo-pop"
+                  style={{
+                    fontSize: `clamp(28px, ${4 + comboBump.level * 2}vw, ${48 + comboBump.level * 12}px)`,
+                    textShadow: "0 0 24px rgba(244,211,106,0.9), 0 0 8px #000",
+                  }}
+                >
+                  COMBO ×{comboBump.level}
+                </div>
+              </div>
+            )}
 
             {phase === "victory" && (
               <Overlay
@@ -655,6 +735,42 @@ function Stat({ label, value, color }: { label: string; value: React.ReactNode; 
   );
 }
 
+/** Компактная плитка статуса для мобильного HUD (видна только на <lg). */
+function MobileStat({
+  icon,
+  label,
+  value,
+  barPct,
+  barColor,
+  pulse,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  barPct: number;
+  barColor: string;
+  pulse?: boolean;
+}) {
+  const pct = Math.max(0, Math.min(100, barPct));
+  return (
+    <div
+      className={`flex flex-col gap-0.5 px-1.5 py-1 rounded border border-[#3a2a5a]/60 bg-[#0a0718]/80 ${pulse ? "animate-pulse ring-1 ring-rune-warm/60" : ""}`}
+    >
+      <div className="flex items-center gap-1">
+        {icon}
+        <span className="text-rune-muted text-[7px] uppercase tracking-wider">{label}</span>
+        <span className="ml-auto text-rune-text text-[8px]">{value}</span>
+      </div>
+      <div className="h-1 w-full rounded-sm bg-[#1f1638] overflow-hidden">
+        <div
+          className={`h-full bg-gradient-to-r ${barColor} transition-all duration-300`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Живой статус руны для боевого HUD. */
 function runeStatusText(
   id: RuneId,
@@ -667,26 +783,36 @@ function runeStatusText(
       if (battle.enemy.frozen) return { text: "Враг заморожен", accent: "text-rune-blue" };
       return { text: "Готова", accent: "text-rune-green" };
     case "chaos": {
-      const turnsToChaos = 5 - (battle.turn % 5);
-      return { text: `Перекраска через ${turnsToChaos} х.`, accent: "text-rune-yellow" };
+      // порог зависит от уровня: 5 / 4 / 3
+      const threshold = st.level === 1 ? 5 : st.level === 2 ? 4 : 3;
+      const turnsToChaos = ((threshold - (battle.turn % threshold)) % threshold) || threshold;
+      return { text: `Перекраска через ${turnsToChaos} х. (ур.${st.level})`, accent: "text-rune-yellow" };
     }
-    case "smith":
+    case "smith": {
+      const threshold = st.level === 1 ? 5 : st.level === 2 ? 4 : 3;
       if (st.bombsThisTurn >= 1) return { text: "Бомба выставлена", accent: "text-rune-warm" };
-      if (st.canUse()) return { text: "Бомба готова (5+)", accent: "text-rune-green" };
+      if (st.canUse()) return { text: `Бомба готова (${threshold}+)`, accent: "text-rune-green" };
       return { text: "Использована", accent: "text-rune-muted" };
+    }
     case "life":
       if (st.lifeRegenStacks > 0) return { text: `Реген ${st.lifeRegenStacks} х.`, accent: "text-rune-green" };
       return { text: "Готова", accent: "text-rune-green" };
-    case "wrath":
-      return { text: `Ярость ×2, ульта ×3`, accent: "text-rune-yellow" };
+    case "wrath": {
+      // эффективный множитель ярости × уровень и ульта × rageStrikeMultiplier
+      const rageMult = st.effectivePower;
+      const ulta = battle.hero.rageStrikeMultiplier();
+      return { text: `Ярость ×${rageMult}, ульта ×${ulta} (ур.${st.level})`, accent: "text-rune-yellow" };
+    }
     case "vampire":
-      return { text: `Вампир +${Math.floor(st.effectivePower * 100)}% урона`, accent: "text-rune-red" };
+      return { text: `+${Math.round(st.effectivePower * 100)}% урона → HP (cap ${st.level === 1 ? 5 : st.level === 2 ? 8 : 12}/ход)`, accent: "text-rune-red" };
     case "guardian":
-      return { text: `Щит ${Math.floor(st.effectivePower * 100)}% переходит`, accent: "text-rune-blue" };
+      return { text: `${Math.round(st.effectivePower * 100)}% щита переходит (ур.${st.level})`, accent: "text-rune-blue" };
     case "fire":
-      return { text: `+${Math.floor((st.effectivePower - 1) * 100)}% к красным 3-4`, accent: "text-rune-red" };
-    case "sage":
-      return { text: `+1 к длине (множитель)`, accent: "text-rune-green" };
+      return { text: `+${Math.round((st.effectivePower - 1) * 100)}% к красным 3-4 (ур.${st.level})`, accent: "text-rune-red" };
+    case "sage": {
+      const bonus = st.level === 1 ? 1 : st.level === 2 ? 2 : 3;
+      return { text: `+${bonus} к длине (множитель)`, accent: "text-rune-green" };
+    }
   }
 }
 
