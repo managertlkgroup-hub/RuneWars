@@ -16,14 +16,40 @@ function runeEffectText(runeId: RuneId, level: number): string {
   const pct = Math.round(scaledBonus * 100);
   switch (runeId) {
     case "fire": return `+${pct}% к урону красных (3-4)`;
-    case "ice": return level === 1 ? "Заморозка на синем 4+" : `Заморозка ×${(1 + (level-1)*0.5).toFixed(1)}`;
-    case "life": return `Лечение ×${(1 + scaledBonus).toFixed(1)}`;
-    case "wrath": return `Ярость ×${(1 + scaledBonus).toFixed(1)}, ульта ×${level === 3 ? 3 : 2}`;
-    case "chaos": return "Каждый 5-й обмен — перекраска";
-    case "smith": return "Красный 5+ → бомба 3×3";
-    case "vampire": return `${pct}% урона → HP`;
-    case "guardian": return `${pct}% щита после боя`;
-    case "sage": return "+1 к длине (множитель)";
+    case "ice": {
+      const cd = level === 1 ? "КД 2 хода" : level === 2 ? "КД 1 ход" : "без КД";
+      return `Заморозка на синем 4+ (${cd})`;
+    }
+    case "life": {
+      const regen = level === 1 ? 2 : level === 2 ? 3 : 4;
+      const stacks = level === 3 ? 4 : 3;
+      return `Лечение ×${(1 + scaledBonus).toFixed(1)} + реген ${regen}HP×${stacks}х`;
+    }
+    case "wrath": {
+      const rageMult = level === 1 ? 2 : level === 2 ? 2.5 : 3;
+      const ultaMult = level === 1 ? 3 : level === 2 ? 3.5 : 4;
+      return `Ярость ×${rageMult}, ульта ×${ultaMult}`;
+    }
+    case "chaos": {
+      const threshold = level === 1 ? 5 : level === 2 ? 4 : 3;
+      return `Каждый ${threshold}-й обмен — перекраска`;
+    }
+    case "smith": {
+      const threshold = level === 1 ? 5 : level === 2 ? 4 : 3;
+      return `Красный ${threshold}+ → бомба 3×3`;
+    }
+    case "vampire": {
+      const cap = level === 1 ? 5 : level === 2 ? 8 : 12;
+      return `${pct}% урона → HP (макс +${cap}/ход)`;
+    }
+    case "guardian": {
+      const gpct = level === 1 ? 50 : level === 2 ? 75 : 100;
+      return `${gpct}% щита сохраняется после боя`;
+    }
+    case "sage": {
+      const bonus = level === 1 ? 1 : level === 2 ? 2 : 3;
+      return `+${bonus} к длине (множитель)`;
+    }
   }
   return def.description;
 }

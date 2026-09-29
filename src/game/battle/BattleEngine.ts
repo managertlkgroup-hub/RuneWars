@@ -164,7 +164,8 @@ export class BattleEngine {
     // руна Хаос: считаем обмены (по turnEnd, но здесь — по факту матча)
     for (const g of groups) {
       // эффективная длина с Мудрецом
-      const effLen = sage && sage.canUse() ? g.length + 1 : g.length;
+      const sageBonus = sage ? (sage.level === 1 ? 1 : sage.level === 2 ? 2 : 3) : 0;
+      const effLen = sage && sage.canUse() ? g.length + sageBonus : g.length;
       const lm = lengthMultiplier(effLen);
       const base = {
         damage: GEM_BASE.damage[Math.min(g.length, GEM_BASE.damage.length - 1)],
@@ -234,7 +235,8 @@ export class BattleEngine {
             // руна Вампир: 20% урона → HP, max 5/ход
             const vamp = hero.getRune("vampire");
             if (vamp && applied > 0) {
-              const vHeal = Math.min(5 - this.vampireHealThisTurn, applied * vamp.effectivePower);
+              const vampireCap = vamp.level === 1 ? 5 : vamp.level === 2 ? 8 : 12;
+          const vHeal = Math.min(vampireCap - this.vampireHealThisTurn, applied * vamp.effectivePower);
               if (vHeal > 0) {
                 const healed = hero.heal(vHeal);
                 this.vampireHealThisTurn += healed;
@@ -253,7 +255,8 @@ export class BattleEngine {
           this.emit({ type: "playerDamage", amount: applied, crit: rageStrike, dodged: false });
           // руна Кузнец: бомба на красном 5+
           const smith = hero.getRune("smith");
-          if (smith && smith.canUse() && g.length >= 5 && smith.bombsThisTurn < 1) {
+          const smithThreshold = smith.level === 1 ? 5 : smith.level === 2 ? 4 : 3;
+          if (smith && smith.canUse() && g.length >= smithThreshold && smith.bombsThisTurn < 1) {
             this.triggerBomb(g);
             smith.markUsed();
             smith.bombsThisTurn++;
@@ -300,7 +303,8 @@ export class BattleEngine {
         if (ice && ice.canUse() && g.length >= 4 && !enemy.frozen) {
           enemy.freeze();
           ice.markUsed();
-          ice.setCooldown(2);
+          const iceCooldown = ice.level === 1 ? 2 : ice.level === 2 ? 1 : 0;
+          ice.setCooldown(iceCooldown);
           this.emit({ type: "runeTriggered", rune: "ice" });
           this.emit({ type: "enemyFrozen" });
         }
@@ -326,11 +330,13 @@ export class BattleEngine {
           hero.addShield(sb);
           this.emit({ type: "playerShield", amount: sb });
         }
-        // руна Жизнь: двойное лечение + реген 3 хода
+        // руна Жизнь: двойное лечение + реген (зависит от уровня)
         const life = hero.getRune("life");
         if (life && life.canUse()) {
           hl *= life.effectivePower;
-          life.lifeRegenStacks = 3;
+          const regenPerTurn = life.level === 1 ? 2 : life.level === 2 ? 3 : 4;
+          const regenStacks = life.level === 3 ? 4 : 3;
+          life.lifeRegenStacks = regenStacks;
           life.markUsed();
           this.emit({ type: "runeTriggered", rune: "life" });
         }
@@ -473,7 +479,8 @@ export class BattleEngine {
 
     // руна Хаос: каждый 5-й ход — перекраска
     const chaos = this.hero.getRune("chaos");
-    if (chaos && this.turn % 5 === 0) {
+    const chaosThreshold = chaos ? (chaos.level === 1 ? 5 : chaos.level === 2 ? 4 : 3) : 5;
+    if (chaos && this.turn % chaosThreshold === 0) {
       const changed = this.board.chaosRecolor();
       if (changed.length > 0) {
         this.emit({ type: "runeTriggered", rune: "chaos", cells: changed });

@@ -144,7 +144,8 @@ export class Hero {
 
   rageStrikeMultiplier(): number {
     const wrath = this.getRune("wrath");
-    return wrath ? 3 : 2;
+    if (!wrath) return 2;
+    return wrath.level === 1 ? 3 : wrath.level === 2 ? 3.5 : 4;
   }
 
   consumeRageStrike(): void {
@@ -190,7 +191,10 @@ export class Hero {
   /** Сохранить щит для перехода между боями (руна Страж + легендарная броня iron_skin). */
   preserveShieldOnVictory(): void {
     const guardian = this.getRune("guardian");
-    let factor = guardian ? guardian.effectivePower : 0;
+    let factor = 0;
+    if (guardian) {
+      factor = guardian.level === 1 ? 0.5 : guardian.level === 2 ? 0.75 : 1.0;
+    }
     // легендарная броня iron_skin: +15% к сохранению
     if (this.equippedItems.armor?.bonus.legendaryEffect === "iron_skin") {
       factor = Math.max(factor, 0.5) + 0.15;
