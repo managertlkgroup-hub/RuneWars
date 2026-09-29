@@ -238,7 +238,6 @@ export default function BattleScreen() {
       } else if (e.type === "victory") {
         setPhaseSafe("victory");
         audio.play("victory");
-        // сохранить переносимый HP после боя + выдать золото подземелья
         const st = useGameStore.getState();
         st.setHeroHp(b.hero.hp);
         st.setHeroMaxHp(b.hero.maxHp);
@@ -248,6 +247,8 @@ export default function BattleScreen() {
         if (pb2?.nodeType === "elite") goldReward = Math.round(goldReward * 1.5);
         if (pb2?.isBoss) goldReward = 30 + (pb2?.floor ?? 5) * 5;
         st.addDungeonGold(goldReward);
+        // статистика
+        st.recordBattleResult(true, 1, pb2?.dungeonId ?? 1, pb2?.isBoss ?? false);
         const cx = 968;
         const cy = 300;
         for (let i = 0; i < 6; i++) {
@@ -421,7 +422,7 @@ export default function BattleScreen() {
   // Поражение / сброс → возврат на карту
   const handleQuickRestart = () => {
     const st = useGameStore.getState();
-    // при поражении: 25% dungeonGold сохраняется как accountGold
+    st.recordBattleResult(false, 0, st.pendingBattle?.dungeonId ?? 1, false);
     st.addGold(Math.floor(st.dungeonGold * 0.25));
     st.setPendingBattle(null);
     st.resetRun();

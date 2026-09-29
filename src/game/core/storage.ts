@@ -17,6 +17,16 @@ export interface MetaState {
   inventory: { uid: string; category: string; subType: string; name: string; rarity: string; baseValue: number; description: string; bonus: Record<string, unknown> }[];
   equippedItems: { weapon: unknown; armor: unknown; amulet: unknown };
   settings: { sound: boolean; music: boolean };
+  // статистика
+  stats: {
+    totalRuns: number;
+    wins: number;
+    deaths: number;
+    enemiesKilled: number;
+    playTimeSec: number;
+    maxDungeonUnlocked: number;
+    dungeonRuns: Record<number, number>;
+  };
 }
 
 const DEFAULT: MetaState = {
@@ -34,6 +44,15 @@ const DEFAULT: MetaState = {
   inventory: [],
   equippedItems: { weapon: null, armor: null, amulet: null },
   settings: { sound: true, music: true },
+  stats: {
+    totalRuns: 0,
+    wins: 0,
+    deaths: 0,
+    enemiesKilled: 0,
+    playTimeSec: 0,
+    maxDungeonUnlocked: 1,
+    dungeonRuns: {},
+  },
 };
 
 export function loadMeta(): Partial<MetaState> {

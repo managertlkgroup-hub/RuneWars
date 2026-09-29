@@ -100,6 +100,15 @@ interface GameUIState {
   heroPrestige: Record<string, number>;
   campUpgrades: Record<string, number>;
   settings: { sound: boolean; music: boolean };
+  stats: {
+    totalRuns: number;
+    wins: number;
+    deaths: number;
+    enemiesKilled: number;
+    playTimeSec: number;
+    maxDungeonUnlocked: number;
+    dungeonRuns: Record<number, number>;
+  };
 
   setScreen: (s: ScreenName) => void;
   addScore: (n: number) => void;
@@ -150,6 +159,8 @@ interface GameUIState {
   prestigeHero: (heroId: string) => void;
   buyCampUpgrade: (id: string, cost: number) => boolean;
   setSettings: (s: Partial<MetaState["settings"]>) => void;
+  recordBattleResult: (won: boolean, enemiesKilled: number, dungeonId: number, isBoss: boolean) => void;
+  tickPlayTime: (sec: number) => void;
 }
 
 // загрузка мета-прогрессии (один раз)
@@ -194,6 +205,15 @@ export const useGameStore = create<GameUIState>((set) => ({
   heroPrestige: _meta.heroPrestige ?? {},
   campUpgrades: _meta.campUpgrades ?? {},
   settings: _meta.settings ?? { sound: true, music: true },
+  stats: _meta.stats ?? {
+    totalRuns: 0,
+    wins: 0,
+    deaths: 0,
+    enemiesKilled: 0,
+    playTimeSec: 0,
+    maxDungeonUnlocked: 1,
+    dungeonRuns: {},
+  },
 
   setScreen: (screen) => set({ screen }),
   addScore: (n) => set((s) => ({ score: s.score + n })),
@@ -338,6 +358,15 @@ export const useGameStore = create<GameUIState>((set) => ({
       heroPrestige: {},
       campUpgrades: {},
       settings: { sound: true, music: true },
+      stats: {
+        totalRuns: 0,
+        wins: 0,
+        deaths: 0,
+        enemiesKilled: 0,
+        playTimeSec: 0,
+        maxDungeonUnlocked: 1,
+        dungeonRuns: {},
+      },
     }),
 
   // --- мета-прогрессия ---
@@ -358,6 +387,7 @@ export const useGameStore = create<GameUIState>((set) => ({
       ownedRunes: s.ownedRunes,
       equippedRunes: s.equippedRunes,
       settings: s.settings,
+      stats: s.stats,
     });
     // синхронизация с Yandex Player (throttled, no-op если SDK недоступен)
     if (typeof window !== "undefined") {
@@ -464,5 +494,30 @@ export const useGameStore = create<GameUIState>((set) => ({
   setSettings: (ns) => {
     set((s) => ({ settings: { ...s.settings, ...ns } }));
     useGameStore.getState().saveMeta();
+  },
+
+  recordBattleResult: (won, killed, dungeonId, isBoss) => {
+    set((s) => {
+      const stats = { ...s.stats };
+      stats.enemiesKilled += killed;
+      if (won) {
+        stats.wins++;
+        if (isBoss) {
+          stats.maxDungeonUnlocked = Math.min(stats.maxDungeonUnlocked + 1, 5);
+        }
+      } else {
+        stats.deaths++;
+      }
+      stats.totalRuns++;
+      const dr = { ...stats.dungeonRuns };
+      dr[dungeonId] = (dr[dungeonId] ?? 0) + 1;
+      stats.dungeonRuns = dr;
+      return { stats };
+    });
+    useGameStore.getState().saveMeta();
+  },
+
+  tickPlayTime: (sec) => {
+    set((s) => ({ stats: { ...s.stats, playTimeSec: s.stats.playTimeSec + sec } }));
   },
 }));
